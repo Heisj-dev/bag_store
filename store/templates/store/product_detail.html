@@ -1,0 +1,107 @@
+{% extends 'store/base.html' %}
+{% load static %}
+
+{% block title %}{{ bag.name|upper }} — BAG STORE{% endblock %}
+
+{% block content %}
+
+<section class="pdp">
+
+    <!-- IMAGE / GALLERY -->
+
+    <div class="pdp-gallery">
+
+        {% with images=bag.images.all %}
+
+            {% if images %}
+
+                <div class="gallery-viewport">
+                    <div class="gallery-track">
+                        {% for bag_image in images %}
+                            <div class="gallery-slide">
+                                <img src="{{ bag_image.image.url }}" alt="{{ bag.name }} — view {{ forloop.counter }}">
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                {% if images|length > 1 %}
+                    <div class="gallery-dots">
+                        {% for bag_image in images %}
+                            <button
+                                type="button"
+                                class="gallery-dot{% if forloop.first %} active{% endif %}"
+                                data-index="{{ forloop.counter0 }}"
+                                aria-label="View image {{ forloop.counter }}"
+                            ></button>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
+            {% else %}
+
+                <div class="detail-image-empty">
+                    <span>IMAGE / PRODUCT</span>
+                </div>
+
+            {% endif %}
+
+        {% endwith %}
+
+    </div>
+
+
+    <!-- PRODUCT DETAILS -->
+
+    <div class="pdp-details">
+
+        <h1 class="pdp-title">{{ bag.name|upper }}</h1>
+
+        <p class="pdp-price">UGX {{ bag.price }}</p>
+
+
+        {% if bag.stock > 0 %}
+
+            <form action="{% url 'cart_add' bag.id %}" method="post">
+                {% csrf_token %}
+                <button type="submit" class="pdp-add-to-cart">
+                    ADD TO CART
+                </button>
+            </form>
+
+        {% else %}
+
+            <button class="pdp-add-to-cart disabled" disabled>
+                SOLD OUT
+            </button>
+
+        {% endif %}
+
+        <p class="pdp-stock">
+            {% if bag.stock > 0 %}{{ bag.stock }} IN STOCK{% else %}CURRENTLY UNAVAILABLE{% endif %}
+        </p>
+
+
+        <details class="pdp-accordion" open>
+            <summary>DESCRIPTION</summary>
+            <p>{{ bag.description }}</p>
+        </details>
+
+        <details class="pdp-accordion">
+            <summary>DETAILS</summary>
+            <div class="pdp-specs">
+                <div class="spec"><span>CATEGORY</span><span>{{ bag.category.name|upper }}</span></div>
+                <div class="spec"><span>PRODUCT CODE</span><span>{{ bag.id|stringformat:"05d" }}</span></div>
+            </div>
+        </details>
+
+    </div>
+
+</section>
+
+{% endblock %}
+
+
+{% block extra_js %}
+<script src="{% static 'store/js/gallery.js' %}"></script>
+{% endblock %}

@@ -1,0 +1,106 @@
+{% extends 'store/base.html' %}
+
+{% block title %}LOGIN — BAG STORE{% endblock %}
+
+{% block content %}
+
+<section class="auth-page">
+
+    <div class="auth-container">
+
+        <p class="eyebrow">
+            BAG STORE
+        </p>
+
+        <h1>
+            WELCOME<br>
+            BACK.
+        </h1>
+
+        <p class="auth-intro">
+            Sign in to your account.
+        </p>
+
+
+        {% if error %}
+
+            <div class="auth-error">
+                {{ error }}
+            </div>
+
+        {% endif %}
+
+
+        <form method="POST" class="auth-form">
+
+            {% csrf_token %}
+
+
+            <div class="form-field">
+
+                <label for="email">
+                    EMAIL
+                </label>
+
+                <input
+                    type="email"
+                    id="email"
+                    name="email"
+                    placeholder="you@example.com"
+                    required
+                    autocomplete="email"
+                >
+
+            </div>
+
+
+            <div class="form-field">
+
+                <label for="password">
+                    PASSWORD
+                </label>
+
+                <input
+                    type="password"
+                    id="password"
+                    name="password"
+                    placeholder="Your password"
+                    required
+                    autocomplete="current-password"
+                >
+
+            </div>
+
+
+            <button
+                type="submit"
+                class="auth-button"
+            >
+                LOGIN →
+            </button>
+
+        </form>
+
+
+        <div class="auth-links">
+
+            <p>
+                Don't have an account?
+                <a href="{% url 'register' %}">
+                    CREATE ACCOUNT
+                </a>
+            </p>
+
+            <p>
+                <a href="{% url 'password_reset' %}">
+                    FORGOT PASSWORD?
+                </a>
+            </p>
+
+        </div>
+
+    </div>
+
+</section>
+
+{% endblock %}

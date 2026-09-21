@@ -1,0 +1,97 @@
+{% extends 'store/base.html' %}
+
+{% block title %}BAG — BAG STORE{% endblock %}
+
+{% block content %}
+
+<section class="receipt-cart">
+
+    <div class="receipt-header">
+        <h1>BAG ({{ cart.cart|length }})</h1>
+        <a href="{% url 'index' %}" class="receipt-close" aria-label="Close">×</a>
+    </div>
+
+    {% if cart.cart %}
+
+        <div class="receipt-items">
+
+            {% for item in cart %}
+
+                <article class="receipt-item">
+
+                    <a href="{% url 'product_detail' item.bag.id %}" class="receipt-thumb">
+                        {% with first_image=item.bag.images.first %}
+                            {% if first_image %}
+                                <img src="{{ first_image.image.url }}" alt="{{ item.bag.name }}">
+                            {% else %}
+                                <div class="image-placeholder"></div>
+                            {% endif %}
+                        {% endwith %}
+                    </a>
+
+                    <div class="receipt-item-info">
+                        <p class="receipt-item-title">{{ item.bag.name|upper }}</p>
+                        <p class="receipt-item-variant">{{ item.bag.category.name|upper }}</p>
+                        <p class="receipt-item-unit-price">UGX {{ item.price }} EACH</p>
+
+                        <div class="receipt-item-controls">
+
+                            <div class="quantity-box">
+                                <form method="post" action="{% url 'cart_decrease' item.bag.id %}">
+                                    {% csrf_token %}
+                                    <button type="submit" aria-label="Decrease quantity">−</button>
+                                </form>
+                                <span>{{ item.quantity }}</span>
+                                <form method="post" action="{% url 'cart_increase' item.bag.id %}">
+                                    {% csrf_token %}
+                                    <button type="submit" aria-label="Increase quantity">+</button>
+                                </form>
+                            </div>
+
+                            <form method="post" action="{% url 'cart_remove' item.bag.id %}">
+                                {% csrf_token %}
+                                <button type="submit" class="receipt-remove">REMOVE</button>
+                            </form>
+
+                        </div>
+
+                    </div>
+
+                    <p class="receipt-item-total">UGX {{ item.total }}</p>
+
+                </article>
+
+            {% endfor %}
+
+        </div>
+
+        <div class="receipt-footer">
+
+            <div class="receipt-total-row">
+                <span>ESTIMATED TOTAL</span>
+                <strong>UGX {{ cart.get_total_price }}</strong>
+            </div>
+
+            <a href="{% url 'checkout' %}" class="receipt-checkout">
+                CHECKOUT
+            </a>
+
+            <a href="{% url 'index' %}" class="text-link receipt-continue">
+                ← CONTINUE SHOPPING
+            </a>
+
+        </div>
+
+    {% else %}
+
+        <div class="empty-collection">
+            <h2>YOUR BAG IS EMPTY.</h2>
+            <p>Add something from the collection.</p>
+            <a href="{% url 'index' %}" class="text-link">VIEW COLLECTION →</a>
+        </div>
+
+    {% endif %}
+
+</section>
+
+{% endblock %}

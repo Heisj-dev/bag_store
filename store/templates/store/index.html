@@ -1,0 +1,150 @@
+{% extends 'store/base.html' %}
+
+{% block title %}BAG STORE — SHOP ALL{% endblock %}
+
+{% block content %}
+
+<!-- SUB-HEADER -->
+
+<div class="sub-header">
+
+    <a href="{% url 'index' %}" class="sub-header-title">
+        {% if category_slug %}SHOP {{ category_slug|upper }}{% elif query %}RESULTS FOR "{{ query }}"{% else %}SHOP ALL{% endif %}
+    </a>
+
+    <button
+        type="button"
+        class="filter-toggle"
+        id="filter-toggle"
+        aria-expanded="false"
+        aria-controls="filter-panel"
+    >
+        FILTER
+    </button>
+
+</div>
+
+
+<!-- FILTER PANEL -->
+
+<div class="filter-panel" id="filter-panel">
+
+    <nav class="category-filter" aria-label="Product categories">
+
+        <a
+    href="{% url 'index' %}?{% if query %}q={{ query|urlencode }}&{% endif %}{% if sort %}sort={{ sort }}&{% endif %}{% if in_stock_only %}in_stock=1&{% endif %}{% if min_price %}min_price={{ min_price }}&{% endif %}{% if max_price %}max_price={{ max_price }}{% endif %}"
+    class="category-filter-link{% if not category_slug %} active{% endif %}"
+        >
+            ALL
+        </a>
+
+        {% for category in categories %}
+
+            <a
+                href="{% url 'index' %}?category={{ category.name|urlencode }}{% if query %}&q={{ query|urlencode }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}{% if in_stock_only %}&in_stock=1{% endif %}{% if min_price %}&min_price={{ min_price }}{% endif %}{% if max_price %}&max_price={{ max_price }}{% endif %}"
+                class="category-filter-link{% if category_slug|lower == category.name|lower %} active{% endif %}"
+            >
+                {{ category.name|upper }}
+            </a>
+
+        {% endfor %}
+
+    </nav>
+
+    <div class="filter-secondary">
+
+        <form method="get" class="sort-form">
+            {% if category_slug %}<input type="hidden" name="category" value="{{ category_slug }}">{% endif %}
+            {% if query %}<input type="hidden" name="q" value="{{ query }}">{% endif %}
+            <select name="sort" onchange="this.form.submit()">
+                <option value="">SORT: FEATURED</option>
+                <option value="price_asc" {% if sort == "price_asc" %}selected{% endif %}>PRICE: LOW TO HIGH</option>
+                <option value="price_desc" {% if sort == "price_desc" %}selected{% endif %}>PRICE: HIGH TO LOW</option>
+                <option value="newest" {% if sort == "newest" %}selected{% endif %}>NEWEST</option>
+                <option value="name_as"{%if sort == "name_asc"%}selected{% endif %}>NAME: A-Z</option>
+            </select>   
+                <label class="filter-checkbox">
+                <input type="checkbox" name="in_stock" value="1" {% if in_stock_only %}checked{% endif %} onchange="this.form.submit()">
+                IN STOCK ONLY
+            </label>
+        </form>
+
+       <form method="get" class="search-form">
+            {% if category_slug %}<input type="hidden" name="category" value="{{ category_slug }}">{% endif %}
+            {% if sort %}<input type="hidden" name="sort" value="{{ sort }}">{% endif %}
+            {% if in_stock_only %}<input type="hidden" name="in_stock" value="1">{% endif %}
+            {% if min_price %}<input type="hidden" name="min_price" value="{{ min_price }}">{% endif %}
+            {% if max_price %}<input type="hidden" name="max_price" value="{{ max_price }}">{% endif %}
+            <input type="text" name="q" value="{{ query }}" placeholder="SEARCH">
+            <button type="submit" aria-label="Search">→</button>
+        </form>
+
+        <form method="get" class="price-filter-form">
+            {% if category_slug %}<input type="hidden" name="category" value="{{ category_slug }}">{% endif %}
+            {% if query %}<input type="hidden" name="q" value="{{ query }}">{% endif %}
+            {% if sort %}<input type="hidden" name="sort" value="{{ sort }}">{% endif %}
+            {% if in_stock_only %}<input type="hidden" name="in_stock" value="1">{% endif %}
+            <input type="number" name="min_price" value="{{ min_price }}" placeholder="MIN">
+            <input type="number" name="max_price" value="{{ max_price }}" placeholder="MAX">
+            <button type="submit">GO</button>
+        </form>
+
+    </div>
+
+</div>
+
+
+<!-- PRODUCT GRID -->
+
+{% if bags %}
+
+    <div class="product-grid">
+
+        {% for bag in bags %}
+
+            <article class="product">
+
+                <a href="{% url 'product_detail' bag.id %}" class="product-image">
+
+                    {% if bag.stock == 0 %}
+                        <span class="sold-out-badge">SOLD OUT</span>
+                    {% endif %}
+
+                    {% with first_image=bag.images.first %}
+
+                        {% if first_image %}
+                            <img src="{{ first_image.image.url }}" alt="{{ bag.name }}">
+                        {% else %}
+                            <div class="image-placeholder">
+                                IMAGE / {{ forloop.counter|stringformat:"02d" }}
+                            </div>
+                        {% endif %}
+
+                    {% endwith %}
+
+                </a>
+
+                <div class="product-meta">
+                    <h3 class="product-title">{{ bag.name|upper }}</h3>
+                    <p class="product-price">UGX {{ bag.price }}</p>
+                </div>
+
+            </article>
+
+        {% endfor %}
+
+    </div>
+
+{% else %}
+
+    <div class="empty-collection">
+        <h2>NOTHING HERE YET.</h2>
+        <p>
+            {% if query %}No results for "{{ query }}".{% elif category_slug %}No products in {{ category_slug|upper }} yet.{% else %}No products were found.{% endif %}
+        </p>
+        <a href="{% url 'index' %}" class="text-link">VIEW ALL PRODUCTS →</a>
+    </div>
+
+{% endif %}
+
+{% endblock %}

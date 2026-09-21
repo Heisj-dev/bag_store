@@ -1,0 +1,193 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>
+        {% block title %}BAG STORE{% endblock %}
+    </title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;700;900&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="{% static 'store/css/style.css' %}">
+</head>
+
+<body>
+
+    <!-- HEADER -->
+    <header class="site-header">
+
+        <button
+            type="button"
+            class="icon-button menu-toggle"
+            aria-label="Menu"
+            aria-expanded="false"
+            aria-controls="nav-drawer"
+        >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+        </button>
+
+        <a href="{% url 'index' %}" class="brand">
+            <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="#E85D8A" stroke-width="1.6">
+                <path d="M6 8h12l-1 13H7L6 8z"></path>
+                <path d="M9 8V6a3 3 0 0 1 6 0v2"></path>
+            </svg>
+            <span>BAG STORE</span>
+        </a>
+
+        <div class="header-actions">
+
+            <button
+                type="button"
+                class="icon-button search-toggle"
+                aria-label="Search"
+                aria-expanded="false"
+                aria-controls="search-panel"
+            >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="11" cy="11" r="7"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+            </button>
+
+            <a href="{% url 'cart_detail' %}" class="icon-button cart-icon" aria-label="Cart">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M6 8h12l-1 13H7L6 8z"></path>
+                    <path d="M9 8V6a3 3 0 0 1 6 0v2"></path>
+                </svg>
+                {% if cart_count %}
+                    <span class="cart-badge">{{ cart_count }}</span>
+                {% endif %}
+            </a>
+
+        </div>
+
+    </header>
+    {% if messages %}
+        <div class="site-messages">
+            {% for message in messages %}
+                <div class="site-message site-message-{{ message.tags }}">
+                   {{ message }}
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <!-- SEARCH PANEL -->
+    <div class="search-panel" id="search-panel" aria-hidden="true">
+        <form method="get" action="{% url 'index' %}" class="search-panel-form">
+            <input
+                type="text"
+                name="q"
+                placeholder="SEARCH BAGS"
+                autocomplete="off"
+            >
+            <button type="submit" aria-label="Search">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="11" cy="11" r="7"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+            </button>
+        </form>
+    </div>
+
+
+    <!-- DRAWER OVERLAY -->
+    <div class="drawer-overlay" id="drawer-overlay"></div>
+
+
+    <!-- OFF-CANVAS MENU DRAWER -->
+    <nav class="nav-drawer" id="nav-drawer" aria-hidden="true">
+
+        <div class="drawer-header">
+            <button type="button" class="drawer-close" id="drawer-close">
+                CLOSE
+            </button>
+        </div>
+
+        <div class="drawer-body">
+
+            <div class="drawer-group">
+
+                <p class="drawer-category">SHOP</p>
+
+                <a href="{% url 'index' %}"{% if not category_slug %} class="active"{% endif %}>ALL BAGS</a>
+
+                {% for category in nav_categories %}
+                    <a
+                        href="{% url 'index' %}?category={{ category.name|urlencode }}"
+                        {% if category_slug|lower == category.name|lower %}class="active"{% endif %}
+                    >
+                        {{ category.name|upper }}
+                    </a>
+                {% endfor %}
+
+            </div>
+
+            <a href="#" class="drawer-link">ABOUT</a>
+
+        </div>
+
+        <div class="drawer-footer">
+
+            {% if user.is_authenticated %}
+
+                <a href="{% url 'account' %}">ACCOUNT</a>
+                <a href="{% url 'order_history' %}">MY ORDERS</a>
+
+                <form method="post" action="{% url 'logout' %}">
+                    {% csrf_token %}
+                    <button type="submit">LOGOUT</button>
+                </form>
+
+            {% else %}
+
+                <a href="{% url 'login' %}">LOGIN</a>
+                <a href="{% url 'register' %}">REGISTER</a>
+
+            {% endif %}
+
+        </div>
+
+    </nav>
+
+
+    <!-- MAIN CONTENT -->
+    <main>
+        {% block content %}
+        {% endblock %}
+    </main>
+
+
+    <!-- FOOTER -->
+    <footer class="site-footer">
+
+        <div class="footer-brand">
+            BAG STORE
+        </div>
+
+        <div class="footer-links">
+            <a href="#">INSTAGRAM</a>
+            <a href="#">CONTACT</a>
+            <a href="#">TERMS</a>
+        </div>
+
+        <p>© 2026 BAG STORE</p>
+
+    </footer>
+
+    <script src="{% static 'store/js/nav.js' %}"></script>
+    {% block extra_js %}{% endblock %}
+
+</body>
+</html>

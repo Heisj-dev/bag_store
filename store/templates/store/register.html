@@ -1,0 +1,128 @@
+{% extends 'store/base.html' %}
+
+{% block title %}CREATE ACCOUNT — BAG STORE{% endblock %}
+
+{% block content %}
+
+<section class="account-page">
+
+    <div class="account-header">
+
+        <p class="eyebrow">
+            BAG STORE
+        </p>
+
+        <h1>
+            CREATE ACCOUNT.
+        </h1>
+
+        <p>
+            Create an account to continue.
+        </p>
+
+    </div>
+
+
+    {% if messages %}
+
+        <div class="form-messages">
+
+            {% for message in messages %}
+
+                <p>
+                    {{ message }}
+                </p>
+
+            {% endfor %}
+
+        </div>
+
+    {% endif %}
+
+
+    <form
+        method="post"
+        class="account-form"
+    >
+
+        {% csrf_token %}
+
+
+        <div class="form-field">
+
+            <label for="email">
+                EMAIL
+            </label>
+
+            <input
+                type="email"
+                id="email"
+                name="email"
+                autocomplete="email"
+                value="{{ request.POST.email }}"
+                required
+            >
+
+        </div>
+
+
+        <div class="form-field">
+
+            <label for="password">
+                PASSWORD
+            </label>
+
+            <input
+                type="password"
+                id="password"
+                name="password"
+                autocomplete="new-password"
+                required
+            >
+
+        </div>
+
+
+        <div class="form-field">
+
+            <label for="password_confirm">
+                CONFIRM PASSWORD
+            </label>
+
+            <input
+                type="password"
+                id="password_confirm"
+                name="password_confirm"
+                autocomplete="new-password"
+                required
+            >
+
+        </div>
+
+
+        <button
+            type="submit"
+            class="account-submit"
+        >
+            CREATE ACCOUNT
+            <span>+</span>
+        </button>
+
+    </form>
+
+
+    <div class="account-switch">
+
+        <p>
+            ALREADY HAVE AN ACCOUNT?
+        </p>
+
+        <a href="{% url 'login' %}">
+            LOGIN →
+        </a>
+
+    </div>
+
+</section>
+
+{% endblock %}

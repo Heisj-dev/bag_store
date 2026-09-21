@@ -1,0 +1,142 @@
+{% extends "store/base.html" %}
+
+{% block title %}ORDER DETAILS | BAG STORE{% endblock %}
+
+{% block content %}
+
+<section class="account-page">
+
+    <!-- ORDER HEADER -->
+
+    <div class="account-header">
+
+        <p class="account-label">
+            ORDER
+        </p>
+
+        <h1>
+            ORDER DETAILS
+        </h1>
+
+    </div>
+
+
+    <!-- ORDER INFORMATION -->
+
+    <div class="account-card">
+
+        <div class="order-card-details">
+
+            <div>
+                <span>
+                    ORDER NUMBER
+                </span>
+
+                <strong>
+                    {{ order.order_number }}
+                </strong>
+            </div>
+
+
+            <div>
+                <span>
+                    DATE
+                </span>
+
+                <strong>
+                    {{ order.created_at|date:"d M Y, H:i" }}
+                </strong>
+            </div>
+
+
+            <div>
+                <span>
+                    STATUS
+                </span>
+
+                <strong>
+                    {{ order.get_status_display }}
+                </strong>
+            </div>
+
+        </div>
+        <hr>
+
+        <hr>
+
+
+        <!-- ORDER ITEMS -->
+
+        <h2>
+            ITEMS
+        </h2>
+
+
+        {% for item in order.items.all %}
+
+            <div class="checkout-item">
+
+                <div>
+
+                    <strong>
+                        {{ item.product_name }}
+                    </strong>
+
+                    <p>
+                        QUANTITY: {{ item.quantity }}
+                    </p>
+
+                    <p>
+                        UNIT PRICE:
+                        UGX {{ item.price|floatformat:0 }}
+                    </p>
+
+                </div>
+
+
+                <strong>
+                    UGX {{ item.get_total_price|floatformat:0 }}
+                </strong>
+
+            </div>
+
+        {% endfor %}
+
+
+        <hr>
+
+
+        <!-- ORDER TOTAL -->
+
+        <div class="checkout-total">
+
+            <strong>
+                TOTAL
+            </strong>
+
+            <strong>
+                UGX {{ order.total|floatformat:0 }}
+            </strong>
+
+        </div>
+
+    </div>
+
+
+    <!-- ACTIONS -->
+
+    <div class="account-actions">
+
+        <a href="{% url 'order_history' %}">
+            MY ORDERS
+        </a>
+
+        <a href="{% url 'index' %}">
+            CONTINUE SHOPPING
+        </a>
+
+    </div>
+
+</section>
+
+{% endblock %}

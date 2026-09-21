@@ -1,0 +1,12 @@
+{% extends "store/base.html" %}
+
+{% block title %}PAGE NOT FOUND — BAG STORE{% endblock %}
+
+{% block content %}
+<section class="empty-collection">
+    <p class="eyebrow">BAG STORE</p>
+    <h2>PAGE NOT FOUND.</h2>
+    <p>The page you're looking for doesn't exist.</p>
+    <a href="{% url 'index' %}" class="hero-link">BACK TO SHOP →</a>
+</section>
+{% endblock %}

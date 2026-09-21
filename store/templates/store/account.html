@@ -1,0 +1,49 @@
+{% extends "store/base.html" %}
+
+{% block title %}ACCOUNT | BAG STORE{% endblock %}
+
+{% block content %}
+
+<section class="account-page">
+
+    <div class="account-header">
+        <p class="account-label">MY ACCOUNT</p>
+        <h1>ACCOUNT DETAILS</h1>
+    </div>
+
+    <div class="account-card">
+
+        <div class="account-row">
+            <span>EMAIL</span>
+            <strong>{{ user.email }}</strong>
+        </div>
+
+        <div class="account-row">
+            <span>USERNAME</span>
+            <strong>{{ user.username }}</strong>
+        </div>
+
+    </div>
+
+    <div class="account-actions">
+
+        <a href="{% url 'order_history' %}">
+            MY ORDERS
+        </a>
+
+        <a href="{% url 'password_change' %}">
+            CHANGE PASSWORD
+        </a>
+
+        <form method="post" action="{% url 'logout' %}">
+            {% csrf_token %}
+            <button type="submit">
+                LOGOUT
+            </button>
+        </form>
+
+    </div>
+
+</section>
+
+{% endblock %}

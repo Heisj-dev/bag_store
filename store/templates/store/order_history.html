@@ -1,0 +1,134 @@
+{% extends "store/base.html" %}
+
+{% block title %}MY ORDERS — BAG STORE{% endblock %}
+
+{% block content %}
+
+<section class="collection orders-page">
+
+    <div class="collection-header">
+
+        <p class="eyebrow">
+            BAG STORE
+        </p>
+
+        <p class="collection-count">
+            MY ORDERS
+        </p>
+
+    </div>
+
+
+    {% if orders %}
+
+        <div class="order-list">
+
+            {% for order in orders %}
+
+                <article class="order-card">
+
+                    <div class="order-card-header">
+
+                        <div>
+
+                            <p class="order-label">
+                                ORDER
+                            </p>
+
+                            <h2>
+                                {{ order.order_number }}
+                            </h2>
+
+                        </div>
+
+                        <div class="order-status">
+                            {{ order.get_status_display }}
+                        </div>
+
+                    </div>
+
+
+                    <div class="order-card-details">
+
+                        <div>
+                            <span>
+                                DATE
+                            </span>
+
+                            <strong>
+                                {{ order.created_at|date:"d M Y" }}
+                            </strong>
+                        </div>
+
+
+                        <div>
+                            <span>
+                                TOTAL
+                            </span>
+
+                            <strong>
+                                UGX {{ order.total }}
+                            </strong>
+                        </div>
+
+
+                        <div>
+                            <span>
+                                ITEMS
+                            </span>
+
+                            <strong>
+                                {{ order.items.count }}
+                            </strong>
+                        </div>
+
+                    </div>
+
+
+                    <div class="order-card-actions">
+
+                        <a
+                            href="{% url 'order_confirmation' order.order_number %}"
+                            class="hero-link"
+                        >
+                            VIEW ORDER →
+                        </a>
+
+                    </div>
+
+                </article>
+
+            {% endfor %}
+
+        </div>
+
+    {% else %}
+
+        <div class="empty-collection">
+
+            <p class="eyebrow">
+                BAG STORE
+            </p>
+
+            <h2>
+                YOU HAVE NO ORDERS YET.
+            </h2>
+
+            <p>
+                Your completed orders will appear here.
+            </p>
+
+            <a
+                href="{% url 'index' %}"
+                class="hero-link"
+            >
+                START SHOPPING →
+            </a>
+
+        </div>
+
+    {% endif %}
+
+</section>
+
+{% endblock %}
