@@ -84,6 +84,15 @@ class Order(models.Model):
         ("CANCELLED", "Cancelled"),
     ]
 
+    PAYMENT_METHOD_CHOICES = [
+        ("COD", "Pay on Delivery"),
+    ]
+
+    PAYMENT_STATUS_CHOICES = [
+        ("PENDING", "Pending"),
+        ("PAID", "Paid"),
+    ]
+
     user = models.ForeignKey(
         "auth.User",
         on_delete=models.CASCADE,
@@ -115,6 +124,18 @@ class Order(models.Model):
         blank=True
     )
 
+    payment_method = models.CharField(
+        max_length=20,
+        choices=PAYMENT_METHOD_CHOICES,
+        default="COD"
+    )
+
+    payment_status = models.CharField(
+        max_length=20,
+        choices=PAYMENT_STATUS_CHOICES,
+        default="PENDING"
+    )
+    
 
     total = models.DecimalField(
         max_digits=10,

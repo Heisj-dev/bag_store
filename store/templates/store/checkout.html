@@ -175,8 +175,88 @@
                 >{{ request.POST.notes|default:'' }}</textarea>
 
             </div>
+            
+            <!-- PAYMENT -->
+
+<h2>
+    PAYMENT
+</h2>
+
+<div class="payment-options">
+
+    <div class="payment-option payment-option-active">
+
+        <div class="payment-option-main">
+
+            <span class="payment-radio"></span>
+
+            <div>
+                <strong>
+                    PAY ON DELIVERY
+                </strong>
+
+                <p>
+                    Pay when your order is delivered.
+                </p>
+            </div>
+
+        </div>
+
+        <span class="payment-available">
+            AVAILABLE
+        </span>
+
+    </div>
 
 
+    <div class="payment-option payment-option-disabled">
+
+        <div class="payment-option-main">
+
+            <div>
+                <strong>
+                    MTN MOBILE MONEY
+                </strong>
+
+                <p>
+                    Mobile money payments are coming soon.
+                </p>
+            </div>
+
+        </div>
+
+        <span class="payment-coming-soon">
+            COMING SOON
+        </span>
+
+    </div>
+
+
+    <div class="payment-option payment-option-disabled">
+
+        <div class="payment-option-main">
+
+            <div>
+                <strong>
+                    AIRTEL MONEY
+                </strong>
+
+                <p>
+                    Mobile money payments are coming soon.
+                </p>
+            </div>
+
+        </div>
+
+        <span class="payment-coming-soon">
+            COMING SOON
+        </span>
+
+    </div>
+
+</div>            
+
+             
             <!-- PLACE ORDER -->
 
             <button

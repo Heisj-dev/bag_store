@@ -130,6 +130,42 @@ class CheckoutTests(TestCase):
         self.assertEqual(self.bag.stock, 3)  # unchanged
         self.assertEqual(Order.objects.count(), 0)  # nothing created
         self.assertEqual(OrderItem.objects.count(), 0)
+    def test_checkout_uses_pay_on_delivery(self):
+
+        self.add_to_session_cart(1)
+
+        response = self.client.post("/checkout/", {
+            "name": "Jane Doe",
+            "email": "buyer@example.com",
+            "phone": "0700000000",
+            "address": "1 Market Street",
+            "city": "Kampala",
+            "notes": "",
+        })
+
+        order = Order.objects.first()
+
+        self.assertEqual(order.payment_method, "COD")
+        self.assertEqual(order.payment_status, "PENDING")
+
+
+    def test_payment_method_cannot_be_changed_by_checkout_form(self):
+
+        self.add_to_session_cart(1)
+
+        self.client.post("/checkout/", {
+            "name": "Jane Doe",
+            "email": "buyer@example.com",
+            "phone": "0700000000",
+            "address": "1 Market Street",
+            "city": "Kampala",
+            "notes": "",
+            "payment_method": "MTN",
+        })
+
+        order = Order.objects.first()
+
+        self.assertEqual(order.payment_method, "COD")    
 
 
 class AuthValidationTests(TestCase):

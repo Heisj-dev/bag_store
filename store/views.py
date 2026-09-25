@@ -326,6 +326,8 @@ def checkout(request):
                 address=address,
                 city=city,
                 notes=notes,
+                payment_method="COD",
+                payment_status="PENDING",
                 total=0,
             )
             

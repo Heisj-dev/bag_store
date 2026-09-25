@@ -127,11 +127,15 @@ class OrderAdmin(admin.ModelAdmin):
         "user",
         "email",
         "total",
+        "payment_method",
+        "payment_status",
         "status",
         "created_at",
     )
 
-    list_editable = ["status"]
+    list_editable = [
+        "status",
+        "payment_status",]
 
     actions = ["mark_as_shipped", "mark_as_delivered"]
 
@@ -145,6 +149,8 @@ class OrderAdmin(admin.ModelAdmin):
 
     list_filter = (
         "status",
+        "payment_method",
+        "payment_status",
         "created_at",
     )
 
@@ -164,6 +170,7 @@ class OrderAdmin(admin.ModelAdmin):
         "user",
         "email",
         "total",
+        "payment_method",
         "created_at",
         "updated_at",
     )

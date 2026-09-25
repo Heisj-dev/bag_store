@@ -3012,3 +3012,94 @@ body {
     background: #000000;
     color: #ffffff;
 }
+/* =========================================================
+   PAYMENT OPTIONS
+   ========================================================= */
+
+.payment-options {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.payment-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+
+    padding: 20px;
+
+    border: 1px solid #c9c6bf;
+    background: transparent;
+}
+
+.payment-option-main {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.payment-option strong {
+    display: block;
+
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+}
+
+.payment-option p {
+    margin-top: 7px;
+
+    color: #77736b;
+
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.payment-radio {
+    width: 14px;
+    height: 14px;
+
+    border: 1px solid #111;
+    border-radius: 50%;
+
+    position: relative;
+    flex-shrink: 0;
+}
+
+.payment-radio::after {
+    content: "";
+
+    position: absolute;
+
+    width: 6px;
+    height: 6px;
+
+    top: 3px;
+    left: 3px;
+
+    background: #111;
+    border-radius: 50%;
+}
+
+.payment-available,
+.payment-coming-soon {
+    flex-shrink: 0;
+
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+}
+
+.payment-available {
+    color: #111;
+}
+
+.payment-coming-soon {
+    color: #99958d;
+}
+
+.payment-option-disabled {
+    opacity: 0.55;
+}
