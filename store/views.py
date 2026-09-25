@@ -10,6 +10,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Q
 from django.core.validators import validate_email
+from django.core.mail import send_mail
 
 from .models import Bag, Category, Order, OrderItem
 from .cart import Cart
@@ -361,6 +362,37 @@ def checkout(request):
 
         request.session["cart"] = {}
         request.session.modified = True
+
+        send_mail(
+            subject=f"NEW BAG STORE ORDER — #{order.order_number}",
+            message=(
+                f"NEW ORDER RECEIVED\n\n"
+                f"Order number: {order.order_number}\n"
+                f"Date: {order.created_at.strftime('%d %B %Y, %H:%M')}\n\n"
+                f"CUSTOMER\n"
+                f"Name: {order.full_name}\n"
+                f"Email: {order.email}\n"
+                f"Phone: {order.phone}\n\n"
+                f"DELIVERY\n"
+                f"Address: {order.address}\n"
+                f"City / Area: {order.city}\n"
+                f"Notes: {order.notes or 'None'}\n\n"
+                f"ITEMS\n"
+                + "\n".join(
+                    f"- {item.product_name} × {item.quantity} — "
+                    f"UGX {item.get_total_price():,.0f}"
+                    for item in order.items.all()
+                )
+                + "\n\n"
+                f"TOTAL: UGX {order.total:,.0f}\n"
+                f"Payment method: {order.payment_method}\n"
+                f"Payment status: {order.payment_status}\n"
+            ),
+            from_email=None,
+            recipient_list=["jossenndiwalana@gmail.com"],
+            fail_silently=False,
+        )
+
 
         return redirect(
             "order_confirmation",
