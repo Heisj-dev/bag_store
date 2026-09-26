@@ -70,6 +70,97 @@ if (menuToggle && navDrawer) {
 
 
 /* =========================
+   DRAWER — SWIPE TO CLOSE
+   (mobile: drag the open drawer
+   toward the left edge to dismiss
+   it, no CLOSE button needed)
+   ========================= */
+
+if (navDrawer) {
+
+    // How far (as a fraction of the drawer's width) the user has to
+    // drag before we treat it as "close", rather than snapping back open.
+    const SWIPE_CLOSE_THRESHOLD = 0.35;
+
+    let startX = 0;
+    let startY = 0;
+    let currentX = 0;
+    let dragging = false;
+    let isHorizontalSwipe = null; // decided after the first few pixels of movement
+
+    function endDrag(shouldEvaluate) {
+
+        dragging = false;
+        navDrawer.classList.remove("is-dragging");
+        navDrawer.style.transform = ""; // hand control back to the CSS class
+
+        if (shouldEvaluate && isHorizontalSwipe) {
+            const deltaX = currentX - startX;
+            const draggedFraction = Math.abs(deltaX) / navDrawer.offsetWidth;
+
+            if (deltaX < 0 && draggedFraction > SWIPE_CLOSE_THRESHOLD) {
+                closeDrawer();
+            }
+        }
+    }
+
+    navDrawer.addEventListener("touchstart", function (event) {
+
+        if (!navDrawer.classList.contains("is-open")) {
+            return;
+        }
+
+        const touch = event.touches[0];
+        startX = touch.clientX;
+        startY = touch.clientY;
+        currentX = startX;
+        dragging = true;
+        isHorizontalSwipe = null;
+
+        navDrawer.classList.add("is-dragging");
+    }, { passive: true });
+
+    navDrawer.addEventListener("touchmove", function (event) {
+
+        if (!dragging) {
+            return;
+        }
+
+        const touch = event.touches[0];
+        currentX = touch.clientX;
+
+        const deltaX = currentX - startX;
+        const deltaY = touch.clientY - startY;
+
+        // Wait for real movement, then decide once: is this a
+        // sideways swipe (closing gesture), or a vertical scroll
+        // through the category list? Locking this in avoids the
+        // drawer fighting with drawer-body's own scroll.
+        if (isHorizontalSwipe === null && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
+            isHorizontalSwipe = Math.abs(deltaX) > Math.abs(deltaY);
+        }
+
+        if (!isHorizontalSwipe) {
+            return;
+        }
+
+        // Only let the drawer follow the finger toward the left
+        // (the direction it closes in) — never past fully open.
+        const drag = Math.min(0, deltaX);
+        navDrawer.style.transform = "translateX(" + drag + "px)";
+    }, { passive: true });
+
+    navDrawer.addEventListener("touchend", function () {
+        endDrag(true);
+    });
+
+    navDrawer.addEventListener("touchcancel", function () {
+        endDrag(false);
+    });
+}
+
+
+/* =========================
    SEARCH PANEL
    ========================= */
 
