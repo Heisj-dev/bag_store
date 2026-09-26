@@ -71,8 +71,6 @@ main {
 
     background: #f2f2f0;
     color: #000000;
-
-    box-shadow: 0 3px 0 0 #f2f2f0;
 }
 
 .icon-button {
@@ -185,16 +183,18 @@ main {
     z-index: 39;
 
     background: #ffffff;
-    border-bottom: 1px solid #000000;
+    border-bottom: 1px solid transparent;
 
     max-height: 0;
     overflow: hidden;
 
-    transition: max-height 220ms ease;
+    transition: max-height 220ms ease, border-bottom-color 220ms ease;
 }
 
 .search-panel.is-open {
     max-height: 80px;
+
+    border-bottom-color: #000000;
 }
 
 .search-panel-form {
@@ -1279,6 +1279,22 @@ main {
     margin-bottom: 30px;
 }
 
+.account-card-padded {
+    padding: 24px;
+}
+
+.account-card-heading {
+    margin-bottom: 8px;
+
+    font-size: 11px;
+
+    font-weight: 700;
+
+    letter-spacing: 0.12em;
+
+    color: #666666;
+}
+
 .account-row {
     display: flex;
 
@@ -1668,6 +1684,23 @@ main {
 
 .checkout-page {
     padding-top: 150px;
+}
+
+.orders-page {
+    padding-top: 150px;
+}
+
+.collection-header {
+    margin-bottom: 40px;
+}
+
+.collection-count {
+    margin-top: 8px;
+
+    font-size: 26px;
+    font-weight: 700;
+
+    letter-spacing: 0.01em;
 }
 
 .checkout-content {
@@ -2107,10 +2140,11 @@ main {
 .order-status {
     padding: 4px 12px;
 
+    border: 1px solid #000000;
     border-radius: 999px;
 
-    background: #000000;
-    color: #ffffff;
+    background: transparent;
+    color: #000000;
 
     font-size: 9px;
 
@@ -2119,6 +2153,17 @@ main {
     letter-spacing: 0.08em;
 
     white-space: nowrap;
+}
+
+.order-status-delivered {
+    background: #000000;
+    color: #ffffff;
+}
+
+.order-status-cancelled {
+    border-color: #cccccc;
+
+    color: #999999;
 }
 
 .order-card-details {
@@ -2737,6 +2782,10 @@ body.nav-open {
     /* CHECKOUT */
 
     .checkout-page {
+        padding-top: 120px;
+    }
+
+    .orders-page {
         padding-top: 120px;
     }
 

@@ -1,6 +1,6 @@
 {% extends "store/base.html" %}
 
-{% block title %}ORDER DETAILS | BAG STORE{% endblock %}
+{% block title %}ORDER DETAILS | BAGS & BEYOND{% endblock %}
 
 {% block content %}
 
@@ -25,69 +25,43 @@
 
     <div class="account-card">
 
-        <div class="order-card-details">
-
-            <div>
-                <span>
-                    ORDER NUMBER
-                </span>
-
-                <strong>
-                    {{ order.order_number }}
-                </strong>
-            </div>
-
-
-            <div>
-                <span>
-                    DATE
-                </span>
-
-                <strong>
-                    {{ order.created_at|date:"d M Y, H:i" }}
-                </strong>
-            </div>
-
-
-            <div>
-                <span>
-                    STATUS
-                </span>
-
-                <strong>
-                    {{ order.get_status_display }}
-                </strong>
-            </div>
-
-            <div>
-                <span>
-                    PAYMENT
-                </span>
-
-                <strong>
-                    {{ order.get_payment_method_display }}
-                </strong>
-            </div>
-
-            <div>
-                <span>
-                    PAYMENT STATUS
-                </span>
-
-                <strong>
-                    {{ order.get_payment_status_display }}
-                </strong>
-            </div>
-
+        <div class="account-row">
+            <span>ORDER NUMBER</span>
+            <strong>{{ order.order_number }}</strong>
         </div>
-        <hr>
 
-        <hr>
+        <div class="account-row">
+            <span>DATE</span>
+            <strong>{{ order.created_at|date:"d M Y, H:i" }}</strong>
+        </div>
+
+        <div class="account-row">
+            <span>STATUS</span>
+            <strong>
+                <span class="order-status order-status-{{ order.status|lower }}">
+                    {{ order.get_status_display }}
+                </span>
+            </strong>
+        </div>
+
+        <div class="account-row">
+            <span>PAYMENT</span>
+            <strong>{{ order.get_payment_method_display }}</strong>
+        </div>
+
+        <div class="account-row">
+            <span>PAYMENT STATUS</span>
+            <strong>{{ order.get_payment_status_display }}</strong>
+        </div>
+
+    </div>
 
 
-        <!-- ORDER ITEMS -->
+    <!-- ORDER ITEMS -->
 
-        <h2>
+    <div class="account-card account-card-padded">
+
+        <h2 class="account-card-heading">
             ITEMS
         </h2>
 
@@ -96,7 +70,7 @@
 
             <div class="checkout-item">
 
-                <div>
+                <div class="checkout-item-details">
 
                     <strong>
                         {{ item.product_name }}
@@ -121,9 +95,6 @@
             </div>
 
         {% endfor %}
-
-
-        <hr>
 
 
         <!-- ORDER TOTAL -->

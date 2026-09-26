@@ -1,6 +1,6 @@
 {% extends "store/base.html" %}
 
-{% block title %}MY ORDERS — BAG STORE{% endblock %}
+{% block title %}MY ORDERS — BAGS & BEYOND{% endblock %}
 
 {% block content %}
 
@@ -9,7 +9,7 @@
     <div class="collection-header">
 
         <p class="eyebrow">
-            BAG STORE
+            BAGS & BEYOND
         </p>
 
         <p class="collection-count">
@@ -41,7 +41,7 @@
 
                         </div>
 
-                        <div class="order-status">
+                        <div class="order-status order-status-{{ order.status|lower }}">
                             {{ order.get_status_display }}
                         </div>
 
@@ -67,7 +67,7 @@
                             </span>
 
                             <strong>
-                                UGX {{ order.total }}
+                                UGX {{ order.total|floatformat:0 }}
                             </strong>
                         </div>
 
@@ -107,7 +107,7 @@
         <div class="empty-collection">
 
             <p class="eyebrow">
-                BAG STORE
+                BAGS & BEYOND
             </p>
 
             <h2>
