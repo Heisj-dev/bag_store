@@ -947,6 +947,18 @@ main {
     cursor: not-allowed;
 }
 
+.delivery-badge {
+    margin-top: 10px;
+
+    font-size: 10px;
+    font-weight: 700;
+
+    letter-spacing: 0.03em;
+    line-height: 1.5;
+
+    color: #666666;
+}
+
 
 /* =========================================================
    PDP ACCORDION
@@ -2268,17 +2280,65 @@ main {
 }
 
 .footer-brand {
-    font-size: clamp(48px, 8vw, 120px);
+    font-size: clamp(26px, 5.5vw, 52px);
 
     font-weight: 900;
 
-    line-height: 0.82;
+    line-height: 1;
 
-    letter-spacing: -0.075em;
+    letter-spacing: -0.03em;
 
     border-bottom: 1px solid #454545;
 
-    padding-bottom: 40px;
+    padding-bottom: 24px;
+}
+
+.footer-main {
+    display: flex;
+
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+
+    gap: 16px 28px;
+
+    padding: 22px 0 20px;
+}
+
+.footer-social {
+    display: flex;
+    align-items: center;
+
+    gap: 4px;
+
+    margin: 0 -8px;
+}
+
+.social-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    width: 38px;
+    height: 38px;
+
+    color: #f7f7f5;
+    opacity: 0.6;
+
+    transition: opacity 200ms ease;
+}
+
+.social-icon svg {
+    width: 19px;
+    height: 19px;
+
+    display: block;
+}
+
+.social-icon:hover,
+.social-icon:focus-visible,
+.social-icon:active {
+    opacity: 1;
 }
 
 .footer-links {
@@ -2286,15 +2346,52 @@ main {
 
     gap: 28px;
 
-    padding: 24px 0;
+    padding: 0;
 }
 
-.footer-links a {
+.footer-links a,
+.footer-links button {
     font-size: 9px;
 
     font-weight: 700;
 
     letter-spacing: 0.13em;
+
+    background: none;
+    border: none;
+    padding: 0;
+
+    color: inherit;
+
+    cursor: pointer;
+}
+
+.footer-service {
+    display: flex;
+    flex-direction: column;
+
+    gap: 8px;
+
+    padding: 22px 0 20px;
+
+    border-top: 1px solid #2a2a2a;
+}
+
+.footer-service p {
+    font-size: 10px;
+
+    line-height: 1.6;
+    letter-spacing: 0.01em;
+
+    color: #a3a099;
+}
+
+.footer-service strong {
+    margin-right: 6px;
+
+    color: #f7f7f5;
+
+    letter-spacing: 0.1em;
 }
 
 .site-footer p {
@@ -2303,6 +2400,291 @@ main {
     letter-spacing: 0.08em;
 
     color: #858585;
+}
+
+
+/* =========================================================
+   POLICY / CONTACT MODALS
+   ========================================================= */
+
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+
+    background: rgba(0, 0, 0, 0.5);
+
+    opacity: 0;
+    pointer-events: none;
+
+    transition: opacity 220ms ease;
+}
+
+.modal-overlay.is-visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    z-index: 56;
+
+    width: min(440px, 92vw);
+    max-height: 82vh;
+
+    display: flex;
+    flex-direction: column;
+
+    background: #ffffff;
+    color: #000000;
+
+    transform: translate(-50%, -50%) scale(0.96);
+    opacity: 0;
+    pointer-events: none;
+
+    transition: opacity 200ms ease, transform 200ms ease;
+}
+
+.modal.is-open {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+    pointer-events: auto;
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    flex-shrink: 0;
+
+    padding: 20px 24px;
+
+    border-bottom: 1px solid #000000;
+}
+
+.modal-header h2 {
+    font-size: 14px;
+    font-weight: 700;
+
+    letter-spacing: 0.06em;
+}
+
+.modal-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    width: 28px;
+    height: 28px;
+
+    background: none;
+    border: none;
+
+    cursor: pointer;
+}
+
+.modal-close svg {
+    width: 18px;
+    height: 18px;
+}
+
+.modal-body {
+    padding: 24px;
+
+    overflow-y: auto;
+}
+
+.modal-section + .modal-section {
+    margin-top: 22px;
+}
+
+.modal-section h3 {
+    margin-bottom: 8px;
+
+    font-size: 11px;
+    font-weight: 700;
+
+    letter-spacing: 0.1em;
+}
+
+.modal-section p,
+.modal-section li {
+    font-size: 13px;
+
+    line-height: 1.6;
+
+    color: #333333;
+}
+
+.modal-section ul {
+    display: flex;
+    flex-direction: column;
+
+    gap: 8px;
+
+    list-style: none;
+}
+
+.modal-section li {
+    position: relative;
+
+    padding-left: 14px;
+}
+
+.modal-section li::before {
+    content: "—";
+    position: absolute;
+    left: 0;
+
+    color: #999999;
+}
+
+.modal-quick-actions {
+    display: flex;
+    flex-direction: column;
+
+    gap: 10px;
+
+    margin-bottom: 22px;
+}
+
+.modal-action-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+
+    padding: 14px;
+
+    background: #000000;
+    color: #ffffff;
+
+    border: 1px solid #000000;
+
+    font-size: 11px;
+    font-weight: 700;
+
+    letter-spacing: 0.1em;
+
+    transition: background 200ms ease, color 200ms ease;
+}
+
+.modal-action-btn small {
+    margin-top: 3px;
+
+    font-size: 9px;
+    font-weight: 400;
+
+    letter-spacing: 0.05em;
+
+    color: #cccccc;
+}
+
+.modal-action-btn:hover {
+    background: #222222;
+}
+
+.modal-action-btn-outline {
+    background: #ffffff;
+    color: #000000;
+}
+
+.modal-action-btn-outline small {
+    color: #666666;
+}
+
+.modal-action-btn-outline:hover {
+    background: #f5f5f3;
+}
+
+.modal-divider-label {
+    margin-bottom: 16px;
+    padding-top: 20px;
+
+    border-top: 1px solid #e5e3de;
+
+    text-align: center;
+
+    font-size: 9px;
+    font-weight: 700;
+
+    letter-spacing: 0.12em;
+
+    color: #999999;
+}
+
+.contact-form {
+    display: flex;
+    flex-direction: column;
+
+    gap: 18px;
+}
+
+.contact-form .form-group.has-error input,
+.contact-form .form-group.has-error textarea {
+    border-width: 2px;
+}
+
+.field-error {
+    display: block;
+
+    min-height: 12px;
+
+    font-size: 10px;
+    font-weight: 700;
+
+    letter-spacing: 0.03em;
+}
+
+.contact-submit {
+    width: 100%;
+
+    padding: 15px;
+
+    border: none;
+
+    background: #000000;
+    color: #ffffff;
+
+    font-size: 11px;
+    font-weight: 700;
+
+    letter-spacing: 0.1em;
+
+    cursor: pointer;
+
+    transition: background 200ms ease;
+}
+
+.contact-submit:hover {
+    background: #222222;
+}
+
+.contact-success {
+    padding: 20px 0;
+
+    text-align: center;
+}
+
+.contact-success-title {
+    margin-bottom: 8px;
+
+    font-size: 14px;
+    font-weight: 700;
+
+    letter-spacing: 0.08em;
+}
+
+.contact-success p {
+    font-size: 12px;
+
+    color: #666666;
+}
+
+body.modal-open {
+    overflow: hidden;
 }
 
 
@@ -2445,6 +2827,17 @@ main {
         padding: 35px 15px 25px;
     }
 
+    .footer-main {
+        flex-direction: column;
+        align-items: flex-start;
+
+        gap: 18px;
+    }
+
+    .footer-social {
+        margin: 0 -8px;
+    }
+
     .footer-links {
         flex-wrap: wrap;
 
@@ -2543,6 +2936,17 @@ main {
         flex-direction: column;
 
         align-items: stretch;
+    }
+
+
+    /* MODALS */
+
+    .modal-header {
+        padding: 16px 18px;
+    }
+
+    .modal-body {
+        padding: 18px;
     }
 }
 
