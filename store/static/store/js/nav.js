@@ -24,6 +24,8 @@ function openDrawer() {
     drawerOverlay.classList.add("is-visible");
     navDrawer.setAttribute("aria-hidden", "false");
     menuToggle.setAttribute("aria-expanded", "true");
+
+    document.body.classList.add("nav-open");
 }
 
 function closeDrawer() {
@@ -36,6 +38,8 @@ function closeDrawer() {
     drawerOverlay.classList.remove("is-visible");
     navDrawer.setAttribute("aria-hidden", "true");
     menuToggle.setAttribute("aria-expanded", "false");
+
+    document.body.classList.remove("nav-open");
 }
 
 if (menuToggle && navDrawer) {

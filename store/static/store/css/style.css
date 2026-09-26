@@ -67,7 +67,7 @@ main {
     align-items: center;
     column-gap: 12px;
 
-    padding: 16px 20px;
+    padding: 20px 20px;
 
     background: #f2f2f0;
     color: #000000;
@@ -76,8 +76,8 @@ main {
 }
 
 .icon-button {
-    width: 26px;
-    height: 26px;
+    width: 28px;
+    height: 28px;
 
     display: flex;
     align-items: center;
@@ -99,8 +99,8 @@ main {
 }
 
 .icon-button svg {
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
 }
 
 .menu-toggle {
@@ -135,7 +135,7 @@ main {
 .brand img {
     display: block;
 
-    height: 36px;
+    height: 40px;
     width: auto;
 }
 
@@ -178,7 +178,7 @@ main {
 
 .search-panel {
     position: fixed;
-    top: 68px;
+    top: 80px;
     left: 0;
 
     width: 100%;
@@ -318,6 +318,7 @@ main {
     flex: 1;
 
     overflow-y: auto;
+    overscroll-behavior: contain;
 
     padding: 24px 20px;
 
@@ -384,7 +385,7 @@ main {
    ========================================================= */
 
 .sub-header {
-    margin-top: 68px;
+    margin-top: 80px;
 
     padding: 10px 20px;
 
@@ -762,7 +763,7 @@ main {
    ========================================================= */
 
 .pdp {
-    margin-top: 68px;
+    margin-top: 80px;
 
     display: grid;
 
@@ -1084,7 +1085,7 @@ main {
    ========================================================= */
 
 .receipt-cart {
-    margin-top: 68px;
+    margin-top: 80px;
 
     width: min(560px, calc(100% - 40px));
 
@@ -2234,7 +2235,7 @@ main {
 .site-messages {
     position: fixed;
 
-    top: 68px;
+    top: 80px;
     left: 0;
 
     width: 100%;
@@ -2280,13 +2281,15 @@ main {
 }
 
 .footer-brand {
+    width: 75%;
+
     font-size: clamp(26px, 5.5vw, 52px);
 
     font-weight: 900;
 
     line-height: 1;
 
-    letter-spacing: -0.03em;
+    letter-spacing: 0.01em;
 
     border-bottom: 1px solid #454545;
 
@@ -2683,7 +2686,8 @@ main {
     color: #666666;
 }
 
-body.modal-open {
+body.modal-open,
+body.nav-open {
     overflow: hidden;
 }
 
