@@ -435,29 +435,43 @@ main {
 }
 
 .filter-panel.is-open {
-    max-height: 300px;
+    max-height: 80vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 
     padding: 18px 20px;
-
-    border-bottom-color: #000000;
 }
 
 .filter-panel .category-filter {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
 
     gap: 8px;
 
-    margin-bottom: 14px;
+    margin: 0 -20px 14px;
+    padding: 0 20px 4px;
+}
+
+.filter-panel .category-filter::-webkit-scrollbar {
+    display: none;
 }
 
 .filter-panel .category-filter-link {
-    padding: 8px 12px;
+    flex: 0 0 auto;
+
+    padding: 8px 16px;
 
     border: 1px solid #000000;
+    border-radius: 999px;
 
     font-size: 10px;
     letter-spacing: 0.06em;
+
+    white-space: nowrap;
 }
 
 .filter-panel .category-filter-link.active,
@@ -468,8 +482,18 @@ main {
 
 .filter-secondary {
     display: flex;
-    gap: 16px;
+    flex-direction: column;
+
+    gap: 14px;
+}
+
+.sort-form {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     flex-wrap: wrap;
+
+    gap: 12px;
 }
 
 .filter-secondary select,
@@ -543,38 +567,8 @@ main {
 
 
 /* =========================================================
-   CATEGORY FILTER + SEARCH (used inside .filter-panel)
+   SORT SELECT (used inside .filter-panel)
    ========================================================= */
-
-.category-filter {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-}
-
-.category-filter-link {
-    display: inline-block;
-
-    padding: 10px 14px;
-
-    border: 1px solid #111111;
-
-    color: #111111;
-    background: transparent;
-
-    font-size: 11px;
-    letter-spacing: 0.08em;
-
-    transition:
-        background 200ms ease,
-        color 200ms ease;
-}
-
-.category-filter-link:hover,
-.category-filter-link.active {
-    background: #111111;
-    color: #ffffff;
-}
 
 .sort-form select {
     padding: 10px 14px;
@@ -591,50 +585,6 @@ main {
 
     cursor: pointer;
 }
-
-.search-form {
-    display: flex;
-    align-items: center;
-
-    border-bottom: 1px solid #111111;
-}
-
-.search-form input {
-    width: 140px;
-
-    border: none;
-    background: transparent;
-
-    padding: 8px 0;
-
-    font: inherit;
-    font-size: 11px;
-
-    letter-spacing: 0.05em;
-    color: #111111;
-}
-
-.search-form input::placeholder {
-    color: #a3a099;
-}
-
-.search-form input:focus {
-    outline: none;
-}
-
-.search-form button {
-    background: none;
-    border: none;
-
-    padding: 6px 2px 6px 8px;
-
-    color: #111111;
-
-    font-size: 14px;
-
-    cursor: pointer;
-}
-
 
 /* =========================================================
    PRODUCT GRID
@@ -2732,19 +2682,6 @@ body.nav-open {
     .product-grid {
         column-gap: 14px;
         row-gap: 32px;
-    }
-
-
-    /* FILTER */
-
-    .search-form {
-        flex: 1;
-    }
-
-    .search-form input {
-        width: auto;
-
-        flex: 1;
     }
 
 

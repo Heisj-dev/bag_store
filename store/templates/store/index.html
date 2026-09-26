@@ -69,16 +69,6 @@
             </label>
         </form>
 
-       <form method="get" class="search-form">
-            {% if category_slug %}<input type="hidden" name="category" value="{{ category_slug }}">{% endif %}
-            {% if sort %}<input type="hidden" name="sort" value="{{ sort }}">{% endif %}
-            {% if in_stock_only %}<input type="hidden" name="in_stock" value="1">{% endif %}
-            {% if min_price %}<input type="hidden" name="min_price" value="{{ min_price }}">{% endif %}
-            {% if max_price %}<input type="hidden" name="max_price" value="{{ max_price }}">{% endif %}
-            <input type="text" name="q" value="{{ query }}" placeholder="SEARCH">
-            <button type="submit" aria-label="Search">→</button>
-        </form>
-
         <form method="get" class="price-filter-form">
             {% if category_slug %}<input type="hidden" name="category" value="{{ category_slug }}">{% endif %}
             {% if query %}<input type="hidden" name="q" value="{{ query }}">{% endif %}
