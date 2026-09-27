@@ -1,5 +1,5 @@
 {% extends 'store/base.html' %}
-{% load humanize %}
+{% load store_extras %}
 
 {% block title %}BAGS & BEYOND — SHOP ALL{% endblock %}
 
@@ -116,7 +116,7 @@
                 </a>
 
                 <div class="product-meta">
-                    <p class="product-price">UGX {{ bag.price|floatformat:"0"|intcomma }}</p>
+                    <p class="product-price">UGX {{ bag.price|ugx_format }}</p>
                     <h3 class="product-title">{{ bag.name|upper }}</h3>
                 </div>
 

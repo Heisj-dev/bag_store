@@ -72,7 +72,7 @@ class Cart:
 
     def __iter__(self):
 
-        bag_ids = self.cart.keys()
+        bag_ids = list(self.cart.keys())
 
         bags = Bag.objects.filter(id__in=bag_ids)
 
@@ -86,6 +86,16 @@ class Cart:
 
                 quantity = bag.stock
 
+            if quantity <= 0:
+
+                del self.cart[bag_id]
+
+                self.session.modified = True
+
+                continue
+
+            if quantity != self.cart[bag_id]:
+
                 self.cart[bag_id] = quantity
 
                 self.session.modified = True
@@ -96,8 +106,6 @@ class Cart:
                 "price": bag.price,
                 "total":bag.price * quantity,
             }
-
-
     def get_total_price(self):
 
         total = 0

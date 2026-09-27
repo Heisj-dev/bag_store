@@ -1,5 +1,5 @@
 {% extends "store/base.html" %}
-{% load humanize %}
+{% load store_extras %}
 
 {% block title %}MY ORDERS — BAGS & BEYOND{% endblock %}
 
@@ -68,7 +68,7 @@
                             </span>
 
                             <strong>
-                                UGX {{ order.total|floatformat:"0"|intcomma }}
+                                UGX {{ order.total|ugx_format }}
                             </strong>
                         </div>
 

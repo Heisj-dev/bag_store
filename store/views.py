@@ -142,6 +142,9 @@ def register(request):
 
 def cart_add(request, bag_id):
 
+    if request.method !="POST":
+        return redirect("product_detail", bag_id=bag_id)
+
     bag = get_object_or_404(Bag, id=bag_id)
 
     cart = Cart(request)

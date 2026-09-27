@@ -217,6 +217,25 @@ class CartLimitTests(TestCase):
 
         session = self.client.session
         self.assertEqual(session["cart"][str(self.bag.id)], 2)
+    def test_cart_drops_item_when_stock_falls_to_zero(self):
+
+        self.client.post(f"/cart/add/{self.bag.id}/")
+
+        # simulate the bag selling out elsewhere while it sits in this cart
+        self.bag.stock = 0
+        self.bag.save(update_fields=["stock"])
+
+        self.client.get("/cart/")
+
+        session = self.client.session
+        self.assertNotIn(str(self.bag.id), session.get("cart", {}))
+
+    def test_cart_add_rejects_get(self):
+
+        self.client.get(f"/cart/add/{self.bag.id}/")
+
+        session = self.client.session
+        self.assertNotIn(str(self.bag.id), session.get("cart", {}))        
 
 
 class OrderAccessTests(TestCase):

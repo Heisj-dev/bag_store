@@ -1,6 +1,6 @@
 {% extends 'store/base.html' %}
 {% load static %}
-{% load humanize %}
+{% load store_extras %}
 
 {% block title %}{{ bag.name|upper }} — BAGS & BEYOND{% endblock %}
 
@@ -58,7 +58,7 @@
 
         <h1 class="pdp-title">{{ bag.name|upper }}</h1>
 
-        <p class="pdp-price">UGX {{ bag.price|floatformat:"0"|intcomma }}</p>
+        <p class="pdp-price">UGX {{ bag.price|ugx_format }}</p>
 
 
         {% if bag.stock > 0 %}
