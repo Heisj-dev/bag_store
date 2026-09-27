@@ -1,6 +1,7 @@
 {% extends "store/base.html" %}
+{% load humanize %}
 
-{% block title %}CHECKOUT — BAG STORE{% endblock %}
+{% block title %}CHECKOUT — BAGS & BEYOND{% endblock %}
 
 {% block content %}
 
@@ -305,13 +306,13 @@
 
                         <p>
                             {{ item.quantity }} ×
-                            UGX {{ item.price|floatformat:0 }}
+                            UGX {{ item.price|floatformat:"0"|intcomma }}
                         </p>
 
                     </div>
 
                     <strong>
-                        UGX {{ item.total|floatformat:0 }}
+                        UGX {{ item.total|floatformat:"0"|intcomma }}
                     </strong>
 
                 </div>
@@ -330,7 +331,7 @@
             </span>
 
             <strong>
-                UGX {{ cart.get_total_price|floatformat:0 }}
+                UGX {{ cart.get_total_price|floatformat:"0"|intcomma }}
             </strong>
 
         </div>

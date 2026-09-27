@@ -182,7 +182,7 @@ main {
     width: 100%;
     z-index: 39;
 
-    background: #ffffff;
+    background: #f2f2f0;
     border-bottom: 1px solid transparent;
 
     max-height: 0;
@@ -597,8 +597,7 @@ main {
 
     grid-template-columns: repeat(2, minmax(0, 1fr));
 
-    column-gap: 20px;
-    row-gap: 40px;
+    gap: 24px;
 
     padding: 12px 20px 60px;
 }
@@ -609,6 +608,8 @@ main {
     display: block;
 
     aspect-ratio: 3 / 4;
+
+    padding: 16px;
 
     background: #ffffff;
 
@@ -650,23 +651,25 @@ main {
 }
 
 .product-meta {
-    padding: 6px 12px 12px;
-}
+    padding: 10px 4px 12px;
 
-.product-title {
-    margin-bottom: 4px;
-
-    font-size: 13px;
-    font-weight: 700;
-
-    letter-spacing: 0.03em;
+    text-align: left;
 }
 
 .product-price {
-    font-size: 12px;
+    margin-bottom: 3px;
+
+    font-size: 10px;
     font-weight: 400;
 
     color: #666666;
+}
+
+.product-title {
+    font-size: 12px;
+    font-weight: 700;
+
+    letter-spacing: 0.03em;
 }
 
 .text-link {
@@ -2277,6 +2280,12 @@ main {
     color: #f7f7f5;
 }
 
+.footer-inner {
+    max-width: 1380px;
+
+    margin: 0 auto;
+}
+
 .footer-brand {
     width: 75%;
 
@@ -2711,24 +2720,12 @@ body.nav-open {
 
 @media (max-width: 800px) {
 
-    /* HEADER */
-
-    .site-header {
-        padding: 16px 16px;
-    }
-
-
     /* COLLECTION */
 
     .collection {
         width: calc(100% - 30px);
 
         padding-bottom: 100px;
-    }
-
-    .product-grid {
-        column-gap: 14px;
-        row-gap: 32px;
     }
 
 
@@ -2851,20 +2848,8 @@ body.nav-open {
 
 @media (max-width: 480px) {
 
-    .site-header {
-        padding: 16px 14px;
-    }
-
     .header-actions {
         gap: 14px;
-    }
-
-
-    /* PRODUCT GRID */
-
-    .product-grid {
-        column-gap: 10px;
-        row-gap: 26px;
     }
 
 
@@ -2974,5 +2959,79 @@ select:focus-visible {
         transition-duration: 0.01ms !important;
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
+    }
+}
+
+
+/* =========================================================
+   DESKTOP / LARGE SCREENS
+   ========================================================= */
+
+@media (min-width: 700px) {
+
+    /* FILTER PANEL — wrap the pills instead of forcing a horizontal
+       scroll, and let sort / price-filter share one row */
+
+    .filter-panel .category-filter {
+        flex-wrap: wrap;
+
+        overflow-x: visible;
+
+        margin: 0 0 14px;
+        padding: 0;
+    }
+
+    .filter-secondary {
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .sort-form {
+        flex: 1;
+
+        min-width: 260px;
+    }
+
+    .price-filter-form {
+        flex-shrink: 0;
+    }
+}
+
+@media (min-width: 900px) {
+
+    /* PRODUCT GRID — 4 columns on desktop */
+
+    .product-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    /* PRODUCT DETAIL — cap width to match the collection pages
+       instead of letting the gallery/details stretch edge to edge */
+
+    .pdp {
+        width: min(1380px, calc(100% - 48px));
+
+        margin-left: auto;
+        margin-right: auto;
+    }
+}
+
+@media (min-width: 1200px) {
+
+    /* HEADER / SUB-HEADER — a little extra breathing room at the
+       edges on very wide screens (vertical padding is untouched,
+       so the header's height stays exactly what every clearance
+       offset elsewhere expects) */
+
+    .site-header {
+        padding-left: 40px;
+        padding-right: 40px;
+    }
+
+    .sub-header {
+        padding-left: 40px;
+        padding-right: 40px;
     }
 }

@@ -1,6 +1,7 @@
 {% extends 'store/base.html' %}
+{% load humanize %}
 
-{% block title %}BAG — BAG STORE{% endblock %}
+{% block title %}BAG — BAGS & BEYOND{% endblock %}
 
 {% block content %}
 
@@ -32,7 +33,7 @@
                     <div class="receipt-item-info">
                         <p class="receipt-item-title">{{ item.bag.name|upper }}</p>
                         <p class="receipt-item-variant">{{ item.bag.category.name|upper }}</p>
-                        <p class="receipt-item-unit-price">UGX {{ item.price }} EACH</p>
+                        <p class="receipt-item-unit-price">UGX {{ item.price|floatformat:"0"|intcomma }} EACH</p>
 
                         <div class="receipt-item-controls">
 
@@ -57,7 +58,7 @@
 
                     </div>
 
-                    <p class="receipt-item-total">UGX {{ item.total }}</p>
+                    <p class="receipt-item-total">UGX {{ item.total|floatformat:"0"|intcomma }}</p>
 
                 </article>
 
@@ -69,7 +70,7 @@
 
             <div class="receipt-total-row">
                 <span>ESTIMATED TOTAL</span>
-                <strong>UGX {{ cart.get_total_price }}</strong>
+                <strong>UGX {{ cart.get_total_price|floatformat:"0"|intcomma }}</strong>
             </div>
 
             <a href="{% url 'checkout' %}" class="receipt-checkout">
