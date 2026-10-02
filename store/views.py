@@ -531,7 +531,7 @@ def checkout(request):
             fail_silently=True,
         )
 
-        send_order_received_email(order)
+        #send_order_received_email(order)
 
         return redirect(
             "order_confirmation",
