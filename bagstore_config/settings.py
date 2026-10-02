@@ -189,6 +189,8 @@ EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD")
 
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL")
 
+EMAIL_TIMEOUT = 5  
+
 # Authentication
 LOGIN_URL = "/login/"
 LOGIN_REDIRECT_URL = "/"
@@ -222,3 +224,11 @@ AUTHENTICATION_BACKENDS = [
 # redirect to /login/ instead of an error page when Google sign-in fails).
 ACCOUNT_ADAPTER = "store.adapters.AccountAdapter"
 SOCIALACCOUNT_ADAPTER = "store.adapters.SocialAccountAdapter"
+
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "root": {"handlers": ["console"], "level": "WARNING"},
+}
