@@ -1,6 +1,6 @@
 {% extends 'store/base.html' %}
 
-{% block title %}LOGIN — BAG STORE{% endblock %}
+{% block title %}Login — Bags &amp; Beyond{% endblock %}
 
 {% block content %}
 
@@ -8,28 +8,26 @@
 
     <div class="auth-container">
 
-        <p class="eyebrow">
-            BAG STORE
-        </p>
+        <p class="auth-eyebrow">BAGS &amp; BEYOND / ACCOUNT</p>
 
-        <h1>
-            WELCOME<br>
-            BACK.
+        <h1 class="auth-title">
+            Welcome<br>
+            back.
         </h1>
 
         <p class="auth-intro">
-            Sign in to your account.
+            Sign in to continue shopping.
         </p>
 
 
         {% if error %}
-
-            <div class="auth-error">
+            <div class="auth-error" role="alert">
                 {{ error }}
             </div>
-
         {% endif %}
 
+
+        <!-- EMAIL LOGIN -->
 
         <form method="POST" class="auth-form">
 
@@ -39,7 +37,7 @@
             <div class="form-field">
 
                 <label for="email">
-                    EMAIL
+                    Email
                 </label>
 
                 <input
@@ -56,9 +54,20 @@
 
             <div class="form-field">
 
-                <label for="password">
-                    PASSWORD
-                </label>
+                <div class="form-label-row">
+
+                    <label for="password">
+                        Password
+                    </label>
+
+                    <a
+                        href="{% url 'password_reset' %}"
+                        class="forgot-password"
+                    >
+                        Forgot password?
+                    </a>
+
+                </div>
 
                 <input
                     type="password"
@@ -76,26 +85,70 @@
                 type="submit"
                 class="auth-button"
             >
-                LOGIN →
+                Login
             </button>
 
         </form>
 
 
-        <div class="auth-links">
+        {% if google_enabled %}
+
+        <!-- DIVIDER -->
+        <div class="auth-divider">
+            <span></span>
+            <p>OR</p>
+            <span></span>
+        </div>
+
+        <!-- GOOGLE LOGIN (a POST form: starts the sign-in straight away) -->
+        <form method="post" action="{% url 'google_login' %}" class="google-login-form">
+            {% csrf_token %}
+            {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+            <button type="submit" class="google-login-button">
+                <svg
+                class="google-icon"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+            >
+
+                <path
+                    d="M21.35 12.27c0-.79-.07-1.55-.22-2.27H12v4.3h5.22a4.46 4.46 0 0 1-1.94 2.93v2.42h3.14c1.84-1.69 2.93-4.18 2.93-7.38Z"
+                    fill="#4285F4"
+                />
+
+                <path
+                    d="M12 21.75c2.63 0 4.84-.87 6.45-2.36l-3.14-2.42c-.87.58-1.98.92-3.31.92-2.54 0-4.69-1.72-5.46-4.03H3.3v2.5A9.75 9.75 0 0 0 12 21.75Z"
+                    fill="#34A853"
+                />
+
+                <path
+                    d="M6.54 13.86A5.86 5.86 0 0 1 6.23 12c0-.64.11-1.26.31-1.86v-2.5H3.3A9.75 9.75 0 0 0 2.25 12c0 1.57.38 3.05 1.05 4.36l3.24-2.5Z"
+                    fill="#FBBC05"
+                />
+
+                <path
+                    d="M12 6.11c1.43 0 2.71.49 3.72 1.45l2.79-2.79C16.84 3.17 14.63 2.25 12 2.25A9.75 9.75 0 0 0 3.3 7.64l3.24 2.5C7.31 7.83 9.46 6.11 12 6.11Z"
+                    fill="#EA4335"
+                />
+
+            </svg>
+                <span>Continue with Google</span>
+            </button>
+        </form>
+
+        {% endif %}
+
+        <!-- REGISTER -->
+
+        <div class="auth-register">
 
             <p>
-                Don't have an account?
-                <a href="{% url 'register' %}">
-                    CREATE ACCOUNT
-                </a>
+                New to Bags &amp; Beyond?
             </p>
 
-            <p>
-                <a href="{% url 'password_reset' %}">
-                    FORGOT PASSWORD?
-                </a>
-            </p>
+            <a href="{% url 'register' %}">
+                Create an account
+            </a>
 
         </div>
 

@@ -3,6 +3,8 @@ import uuid
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.models import User
 from django.contrib.auth import login, authenticate
+from django.contrib.auth import views as auth_views
+from django.contrib.auth.forms import PasswordResetForm
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.password_validation import validate_password
@@ -11,9 +13,13 @@ from django.db import transaction
 from django.db.models import Q
 from django.core.validators import validate_email
 from django.core.mail import send_mail
+from django.utils.http import url_has_allowed_host_and_scheme
+
+from allauth.socialaccount.adapter import get_adapter as get_social_adapter
 
 from .models import Bag, Category, Order, OrderItem
 from .cart import Cart
+from .emails import send_order_received_email
 def index(request):
 
     bags = Bag.objects.select_related("category").prefetch_related("images")
@@ -75,14 +81,64 @@ def index(request):
     )
 
 
+ORDER_STATUS_SEQUENCE = ["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED"]
+
+ORDER_TRACKER_STEPS = [
+    ("CONFIRMED", "WE CONFIRM YOUR ORDER"),
+    ("PROCESSING", "WE PREPARE YOUR BAG"),
+    ("SHIPPED", "RIDER IS ON THE WAY"),
+    ("DELIVERED", "ORDER DELIVERED"),
+]
+
+
+def build_order_tracker(status):
+    if status not in ORDER_STATUS_SEQUENCE:
+        return None
+
+    current_index = ORDER_STATUS_SEQUENCE.index(status)
+    last_step_index = len(ORDER_TRACKER_STEPS) - 1
+    steps = []
+
+    for i, (key, label) in enumerate(ORDER_TRACKER_STEPS):
+        target_index = i + 1
+
+        if current_index > target_index:
+            state = "done"
+        elif current_index == target_index:
+            state = "done" if i == last_step_index else "current"
+        elif current_index == 0 and i == 0:
+            state = "current"
+        else:
+            state = "upcoming"
+
+        steps.append({
+            "key": key,
+            "label": label,
+            "state": state,
+        })
+
+    return steps
+
+
 def product_detail(request, bag_id):
 
     bag = get_object_or_404(Bag, id=bag_id)
 
+    related_bags = (
+        Bag.objects.filter(category=bag.category)
+        .exclude(id=bag.id)
+        .select_related("category")
+        .prefetch_related("images")
+        .order_by("-created_at")[:4]
+    )
+
     return render(
         request,
         "store/product_detail.html",
-        {"bag": bag}
+        {
+            "bag": bag,
+            "related_bags": related_bags,
+        }
     )
 
 
@@ -106,7 +162,9 @@ def register(request):
         elif password != password_confirm:
             messages.error(request, "PASSWORDS DO NOT MATCH.")
 
-        elif User.objects.filter(username=email).exists():
+        elif User.objects.filter(
+            Q(username__iexact=email) | Q(email__iexact=email)
+        ).exists():
             messages.error(
                 request,
                 "AN ACCOUNT WITH THIS EMAIL ALREADY EXISTS."
@@ -130,13 +188,18 @@ def register(request):
                     password=password,
                 )
 
-                login(request, user)
+                login(
+                    request,
+                    user,
+                    backend="django.contrib.auth.backends.ModelBackend",
+                )
 
                 return redirect("index")
 
     return render(
         request,
-        "store/register.html"
+        "store/register.html",
+        {"google_enabled": _google_login_enabled(request)}
     )
 
 
@@ -230,10 +293,47 @@ def cart_remove(request, bag_id):
     return redirect("cart_detail")
 
 
+def _next_url(request):
+    """
+    The page a customer was trying to reach before being asked to log in
+    (?next=/checkout/). Only same-site addresses are accepted.
+    """
+
+    candidate = request.POST.get("next") or request.GET.get("next") or ""
+
+    if candidate and url_has_allowed_host_and_scheme(
+        candidate,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return candidate
+
+    return ""
+
+
+def _google_login_enabled(request):
+    """
+    True when a Google app is configured, so the "Continue with Google" button
+    is only shown when it can actually work.
+    """
+
+    try:
+        return bool(get_social_adapter().list_apps(request, provider="google"))
+    except Exception:
+        return False
+
+
 def login_view(request):
 
+    next_url = _next_url(request)
+
     if request.user.is_authenticated:
-        return redirect("index")
+        return redirect(next_url or "index")
+
+    context = {
+        "next": next_url,
+        "google_enabled": _google_login_enabled(request),
+    }
 
     if request.method == "POST":
 
@@ -250,20 +350,55 @@ def login_view(request):
 
             login(request, user)
 
-            return redirect("index")
+            return redirect(next_url or "index")
 
-        return render(
-            request,
-            "store/login.html",
-            {
-                "error": "Invalid email or password."
-            }
-        )
+        context["error"] = "Invalid email or password."
 
     return render(
         request,
-        "store/login.html"
+        "store/login.html",
+        context
     )
+
+
+class CustomerLogoutView(auth_views.LogoutView):
+    """
+    Logout is a POST (the Logout buttons). A plain visit to the address, for
+    example from a bookmark, just goes home instead of showing an error page.
+    """
+
+    next_page = "index"
+    http_method_names = ["get", "post", "options"]
+
+    def get(self, request, *args, **kwargs):
+        return redirect("index")
+
+
+class CustomerPasswordResetForm(PasswordResetForm):
+    """
+    Also finds customers who signed up with Google and have no password yet,
+    so they can set one from the "Forgot password?" link.
+    """
+
+    def get_users(self, email):
+        return User.objects.filter(email__iexact=email, is_active=True)
+
+
+class CustomerPasswordResetView(auth_views.PasswordResetView):
+    """
+    The reset link in the e-mail must point at the site the customer is
+    actually using, not at the "example.com" default of the Sites framework.
+    """
+
+    template_name = "store/password_reset.html"
+    form_class = CustomerPasswordResetForm
+
+    def form_valid(self, form):
+        self.extra_email_context = {
+            "domain": self.request.get_host(),
+            "site_name": "Bags & Beyond",
+        }
+        return super().form_valid(form)
 
 
 @login_required
@@ -393,9 +528,10 @@ def checkout(request):
             ),
             from_email=None,
             recipient_list=["jossenndiwalana@gmail.com"],
-            fail_silently=False,
+            fail_silently=True,
         )
 
+        send_order_received_email(order)
 
         return redirect(
             "order_confirmation",
@@ -425,6 +561,7 @@ def order_confirmation(request, order_number):
         "store/order_confirmation.html",
         {
             "order": order,
+            "tracker_steps": build_order_tracker(order.status),
         }
     )
 

@@ -1,11 +1,14 @@
 {% extends "store/base.html" %}
 
-{% block title %}FORBIDDEN — BAG STORE{% endblock %}
+{% block title %}Access Denied — Bags &amp; Beyond{% endblock %}
 
 {% block content %}
-<section class="empty-collection">
-    <h2>ACCESS DENIED.</h2>
+
+<section class="error-page">
+    <p class="error-code">403</p>
+    <h1>Access denied.</h1>
     <p>You don't have permission to view this page.</p>
-    <a href="{% url 'index' %}" class="text-link">BACK TO SHOP →</a>
+    <a href="{% url 'index' %}" class="button">Back to shop</a>
 </section>
+
 {% endblock %}

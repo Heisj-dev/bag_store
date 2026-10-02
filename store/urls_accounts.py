@@ -1,5 +1,6 @@
 from django.urls import path
 from django.contrib.auth import views as auth_views
+from django.views.generic import RedirectView
 
 from . import views
 
@@ -13,28 +14,38 @@ urlpatterns = [
         name="register"
     ),
 
-    # Login
+    # allauth's own pages are not used by the shop. Anyone arriving at one
+    # (an old link, a bookmark, a redirect from allauth) is sent to the
+    # shop's page instead. The main login is /login/ (see store/urls.py).
     path(
         "login/",
-        views.login_view,
-        name="login"
+        RedirectView.as_view(pattern_name="login", query_string=True),
+        name="legacy_login"
+    ),
+
+    path(
+        "signup/",
+        RedirectView.as_view(pattern_name="register", query_string=True),
+        name="legacy_signup"
+    ),
+
+    path(
+        "password/reset/",
+        RedirectView.as_view(pattern_name="password_reset"),
+        name="legacy_password_reset"
     ),
 
     # Logout
     path(
         "logout/",
-        auth_views.LogoutView.as_view(
-            next_page="index"
-        ),
+        views.CustomerLogoutView.as_view(),
         name="logout"
     ),
 
     # Password reset - request
     path(
         "password-reset/",
-        auth_views.PasswordResetView.as_view(
-            template_name="store/password_reset.html"
-        ),
+        views.CustomerPasswordResetView.as_view(),
         name="password_reset"
     ),
 
@@ -64,32 +75,36 @@ urlpatterns = [
         ),
         name="password_reset_complete"
     ),
+
     # Customer Account
     path(
         "account/",
         views.account,
         name="account"
-   ),
-   path(
-    "orders/",
-    views.order_history,
-    name="order_history"
-),
-   # Change Password
-path(
-    "password/change/",
-    auth_views.PasswordChangeView.as_view(
-        template_name="store/password_change.html",
-        success_url="/accounts/password/change/done/"
     ),
-    name="password_change"
-),
 
-path(
-    "password/change/done/",
-    auth_views.PasswordChangeDoneView.as_view(
-        template_name="store/password_change_done.html"
+    # Orders
+    path(
+        "orders/",
+        views.order_history,
+        name="order_history"
     ),
-    name="password_change_done"
-),
+
+    # Change Password
+    path(
+        "password/change/",
+        auth_views.PasswordChangeView.as_view(
+            template_name="store/password_change.html",
+            success_url="/accounts/password/change/done/"
+        ),
+        name="password_change"
+    ),
+
+    path(
+        "password/change/done/",
+        auth_views.PasswordChangeDoneView.as_view(
+            template_name="store/password_change_done.html"
+        ),
+        name="password_change_done"
+    ),
 ]

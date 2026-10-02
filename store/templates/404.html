@@ -1,12 +1,14 @@
 {% extends "store/base.html" %}
 
-{% block title %}PAGE NOT FOUND — BAG STORE{% endblock %}
+{% block title %}Page Not Found — Bags &amp; Beyond{% endblock %}
 
 {% block content %}
-<section class="empty-collection">
-    <p class="eyebrow">BAG STORE</p>
-    <h2>PAGE NOT FOUND.</h2>
-    <p>The page you're looking for doesn't exist.</p>
-    <a href="{% url 'index' %}" class="hero-link">BACK TO SHOP →</a>
+
+<section class="error-page">
+    <p class="error-code">404</p>
+    <h1>This page doesn't exist.</h1>
+    <p>The page you're looking for may have moved, or the link may be wrong.</p>
+    <a href="{% url 'index' %}" class="button">Back to shop</a>
 </section>
+
 {% endblock %}

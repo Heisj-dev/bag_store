@@ -1,25 +1,27 @@
 {% extends "store/base.html" %}
 
-{% block title %}ACCOUNT | BAG STORE{% endblock %}
+{% block title %}My Account — Bags &amp; Beyond{% endblock %}
 
 {% block content %}
 
 <section class="account-page">
 
     <div class="account-header">
-        <p class="account-label">MY ACCOUNT</p>
-        <h1>ACCOUNT DETAILS</h1>
+        <p class="eyebrow">Bags &amp; Beyond</p>
+        <h1>My Account</h1>
     </div>
 
     <div class="account-card">
 
+        <p class="account-card-heading">Account details</p>
+
         <div class="account-row">
-            <span>EMAIL</span>
+            <span>Email</span>
             <strong>{{ user.email }}</strong>
         </div>
 
         <div class="account-row">
-            <span>USERNAME</span>
+            <span>Username</span>
             <strong>{{ user.username }}</strong>
         </div>
 
@@ -27,18 +29,18 @@
 
     <div class="account-actions">
 
-        <a href="{% url 'order_history' %}">
-            MY ORDERS
+        <a href="{% url 'order_history' %}" class="account-action-primary">
+            My Orders
         </a>
 
-        <a href="{% url 'password_change' %}">
-            CHANGE PASSWORD
+        <a href="{% url 'password_change' %}" class="account-action-secondary">
+            Change Password
         </a>
 
         <form method="post" action="{% url 'logout' %}">
             {% csrf_token %}
-            <button type="submit">
-                LOGOUT
+            <button type="submit" class="account-action-text">
+                Logout
             </button>
         </form>
 

@@ -70,6 +70,21 @@ galleryDots.forEach(function (dot) {
 
 
 /* =========================
+   ARROW CONTROLS
+   (styled in the stylesheet — shown only
+   on devices with a mouse; touch devices swipe)
+   ========================= */
+
+document.querySelectorAll(".gallery-arrow-prev").forEach(function (button) {
+    button.addEventListener("click", showPreviousSlide);
+});
+
+document.querySelectorAll(".gallery-arrow-next").forEach(function (button) {
+    button.addEventListener("click", showNextSlide);
+});
+
+
+/* =========================
    KEYBOARD CONTROLS
    ========================= */
 

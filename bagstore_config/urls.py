@@ -20,6 +20,19 @@ from django.urls import path, include
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+
+    # The shop: /login/ is the main customer login.
     path("", include("store.urls")),
+
+    # The shop's own account pages: register, logout, password reset/change,
+    # account, orders. Listed before allauth so these always win.
     path("accounts/", include("store.urls_accounts")),
+
+    # django-allauth, used only for Google sign-in:
+    #   /accounts/google/login/            starts the Google sign-in
+    #   /accounts/google/login/callback/   where Google sends the customer back
+    # (the callback address is the one registered in the Google console).
+    # Its own login / signup / password pages are redirected to the shop's
+    # pages in store/urls_accounts.py.
+    path("accounts/", include("allauth.urls")),
 ]

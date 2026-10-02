@@ -1,24 +1,16 @@
 {% extends "store/base.html" %}
 {% load store_extras %}
 
-{% block title %}MY ORDERS — BAGS & BEYOND{% endblock %}
+{% block title %}My Orders — Bags &amp; Beyond{% endblock %}
 
 {% block content %}
 
-<section class="collection orders-page">
+<section class="collection orders-page account-narrow">
 
-    <div class="collection-header">
-
-        <p class="eyebrow">
-            BAGS & BEYOND
-        </p>
-
-        <p class="collection-count">
-            MY ORDERS
-        </p>
-
+    <div class="page-header">
+        <p class="eyebrow">Bags &amp; Beyond</p>
+        <h1 class="page-title">My Orders</h1>
     </div>
-
 
     {% if orders %}
 
@@ -31,15 +23,8 @@
                     <div class="order-card-header">
 
                         <div>
-
-                            <p class="order-label">
-                                ORDER
-                            </p>
-
-                            <h2>
-                                {{ order.order_number }}
-                            </h2>
-
+                            <p class="order-label">Order</p>
+                            <h2>{{ order.order_number }}</h2>
                         </div>
 
                         <div class="order-status order-status-{{ order.status|lower }}">
@@ -48,53 +33,29 @@
 
                     </div>
 
-
                     <div class="order-card-details">
 
                         <div>
-                            <span>
-                                DATE
-                            </span>
-
-                            <strong>
-                                {{ order.created_at|date:"d M Y" }}
-                            </strong>
+                            <span>Date</span>
+                            <strong>{{ order.created_at|date:"d M Y" }}</strong>
                         </div>
 
-
                         <div>
-                            <span>
-                                TOTAL
-                            </span>
-
-                            <strong>
-                                UGX {{ order.total|ugx_format }}
-                            </strong>
+                            <span>Total</span>
+                            <strong>UGX {{ order.total|ugx_format }}</strong>
                         </div>
 
-
                         <div>
-                            <span>
-                                ITEMS
-                            </span>
-
-                            <strong>
-                                {{ order.items.count }}
-                            </strong>
+                            <span>Items</span>
+                            <strong>{{ order.items.count }}</strong>
                         </div>
 
                     </div>
 
-
                     <div class="order-card-actions">
-
-                        <a
-                            href="{% url 'order_confirmation' order.order_number %}"
-                            class="text-link"
-                        >
-                            VIEW ORDER →
+                        <a href="{% url 'order_confirmation' order.order_number %}" class="text-link">
+                            View order →
                         </a>
-
                     </div>
 
                 </article>
@@ -107,24 +68,10 @@
 
         <div class="empty-collection">
 
-            <p class="eyebrow">
-                BAGS & BEYOND
-            </p>
+            <h2>You have no orders yet.</h2>
+            <p>Your completed orders will appear here.</p>
 
-            <h2>
-                YOU HAVE NO ORDERS YET.
-            </h2>
-
-            <p>
-                Your completed orders will appear here.
-            </p>
-
-            <a
-                href="{% url 'index' %}"
-                class="text-link"
-            >
-                START SHOPPING →
-            </a>
+            <a href="{% url 'index' %}" class="button-secondary">Start shopping</a>
 
         </div>
 

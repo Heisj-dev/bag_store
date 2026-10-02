@@ -2,10 +2,103 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Something went wrong — BAG STORE</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f2f1ed">
+    <title>Something Went Wrong — Bags &amp; Beyond</title>
+
+    <!--
+        Standalone on purpose: a 500 can mean the database or a template
+        context processor is failing, so this page must not extend base.html.
+        The styles below are a small copy of the site's design tokens.
+    -->
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background: #f2f1ed;
+            color: #111111;
+            font-family: "Archivo", Arial, Helvetica, sans-serif;
+            line-height: 1.65;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .bar {
+            padding: 24px 24px;
+            border-bottom: 1px solid #d8d6d0;
+            text-align: center;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+        }
+
+        main {
+            flex: 1;
+            width: min(560px, calc(100% - 48px));
+            margin: 0 auto;
+            padding: 96px 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+
+        .code {
+            font-size: clamp(88px, 22vw, 160px);
+            font-weight: 700;
+            line-height: 0.9;
+            letter-spacing: -0.05em;
+        }
+
+        h1 {
+            margin-top: 24px;
+            font-size: clamp(24px, 4vw, 30px);
+            font-weight: 700;
+            line-height: 1.15;
+            letter-spacing: -0.02em;
+        }
+
+        p.copy {
+            margin-top: 12px;
+            max-width: 40ch;
+            font-size: 15px;
+            color: #66645f;
+        }
+
+        a.button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 48px;
+            min-height: 52px;
+            padding: 0 32px;
+            background: #111111;
+            border: 1px solid #111111;
+            color: #f2f1ed;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.14em;
+            text-decoration: none;
+            text-transform: uppercase;
+        }
+
+        a.button:hover { background: #34322e; border-color: #34322e; }
+        a.button:focus-visible { outline: 2px solid #3a3834; outline-offset: 4px; }
+    </style>
 </head>
-<body style="font-family: Arial, sans-serif; text-align: center; padding: 100px 20px;">
-    <h1>SOMETHING WENT WRONG.</h1>
-    <p>Please try again in a moment.</p>
+<body>
+
+    <div class="bar">Bags &amp; Beyond</div>
+
+    <main>
+        <p class="code">500</p>
+        <h1>Something went wrong.</h1>
+        <p class="copy">Please try again in a moment. If it keeps happening, get in touch and we'll sort it out.</p>
+        <a href="/" class="button">Back to shop</a>
+    </main>
+
 </body>
 </html>

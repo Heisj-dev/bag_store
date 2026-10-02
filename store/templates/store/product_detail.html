@@ -2,14 +2,13 @@
 {% load static %}
 {% load store_extras %}
 
-{% block title %}{{ bag.name|upper }} — BAGS & BEYOND{% endblock %}
+{% block title %}{{ bag.name }} — Bags &amp; Beyond{% endblock %}
 
 {% block content %}
 
 <section class="pdp">
 
     <!-- IMAGE / GALLERY -->
-
     <div class="pdp-gallery">
 
         {% with images=bag.images.all %}
@@ -17,6 +16,7 @@
             {% if images %}
 
                 <div class="gallery-viewport">
+
                     <div class="gallery-track">
                         {% for bag_image in images %}
                             <div class="gallery-slide">
@@ -24,6 +24,20 @@
                             </div>
                         {% endfor %}
                     </div>
+
+                    {% if images|length > 1 %}
+                        <button type="button" class="gallery-arrow gallery-arrow-prev" aria-label="Previous image">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                                <polyline points="15 5 8 12 15 19"></polyline>
+                            </svg>
+                        </button>
+                        <button type="button" class="gallery-arrow gallery-arrow-next" aria-label="Next image">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                                <polyline points="9 5 16 12 9 19"></polyline>
+                            </svg>
+                        </button>
+                    {% endif %}
+
                 </div>
 
                 {% if images|length > 1 %}
@@ -42,7 +56,7 @@
             {% else %}
 
                 <div class="detail-image-empty">
-                    <span>IMAGE / PRODUCT</span>
+                    <span>Image unavailable</span>
                 </div>
 
             {% endif %}
@@ -53,50 +67,56 @@
 
 
     <!-- PRODUCT DETAILS -->
-
     <div class="pdp-details">
 
-        <h1 class="pdp-title">{{ bag.name|upper }}</h1>
+        <h1 class="pdp-title">{{ bag.name }}</h1>
 
         <p class="pdp-price">UGX {{ bag.price|ugx_format }}</p>
 
-
         {% if bag.stock > 0 %}
-
             <form action="{% url 'cart_add' bag.id %}" method="post">
                 {% csrf_token %}
                 <button type="submit" class="pdp-add-to-cart">
-                    ADD TO CART
+                    Add to cart
                 </button>
             </form>
-
         {% else %}
-
             <button class="pdp-add-to-cart disabled" disabled>
-                SOLD OUT
+                Sold out
             </button>
-
         {% endif %}
 
-        <p class="delivery-badge">
-            12–48 Hr Delivery | Free in Kampala Central • Subsidized Metropolitan • Pay on Delivery Available
-        </p>
+        <dl class="service-info">
+            <div>
+                <dt>Delivery</dt>
+                <dd>
+                    12–48 hours
+                    <span>Free in Kampala Central, subsidized for the wider Kampala metropolitan area.</span>
+                </dd>
+            </div>
+            <div>
+                <dt>Payment</dt>
+                <dd>
+                    Pay on delivery
+                    <span>Cash or Mobile Money, paid to the rider.</span>
+                </dd>
+            </div>
+        </dl>
 
-        <p class="pdp-stock">
-            {% if bag.stock > 0 %}{{ bag.stock }} IN STOCK{% else %}CURRENTLY UNAVAILABLE{% endif %}
+        <p class="pdp-stock{% if bag.stock > 0 and bag.stock <= 5 %} pdp-stock-low{% elif bag.stock <= 0 %} pdp-stock-out{% endif %}">
+            {% if bag.stock <= 0 %}Currently unavailable{% elif bag.stock <= 5 %}Only {{ bag.stock }} left{% else %}In stock{% endif %}
         </p>
-
 
         <details class="pdp-accordion" open>
-            <summary>DESCRIPTION</summary>
+            <summary>Description</summary>
             <p>{{ bag.description }}</p>
         </details>
 
         <details class="pdp-accordion">
-            <summary>DETAILS</summary>
+            <summary>Details</summary>
             <div class="pdp-specs">
-                <div class="spec"><span>CATEGORY</span><span>{{ bag.category.name|upper }}</span></div>
-                <div class="spec"><span>PRODUCT CODE</span><span>{{ bag.id|stringformat:"05d" }}</span></div>
+                <div class="spec"><span>Category</span><span>{{ bag.category.name }}</span></div>
+                <div class="spec"><span>Product code</span><span>{{ bag.id|stringformat:"05d" }}</span></div>
             </div>
         </details>
 
@@ -104,8 +124,47 @@
 
 </section>
 
-{% endblock %}
+<!-- RELATED PRODUCTS -->
+{% if related_bags %}
+<section class="related-products">
 
+    <div class="related-products-header">
+        <p class="related-products-title">YOU MAY ALSO LIKE</p>
+    </div>
+
+    <div class="related-products-scroll">
+
+        {% for related_bag in related_bags %}
+
+            <a href="{% url 'product_detail' related_bag.id %}"
+               class="related-product">
+
+                <div class="related-product-image">
+                    {% with related_images=related_bag.images.all %}
+                        {% if related_images %}
+                            {% with first_image=related_images|first %}
+                                <img
+                                    src="{{ first_image.image.url }}"
+                                    alt="{{ related_bag.name }}"
+                                >
+                            {% endwith %}
+                        {% endif %}
+                    {% endwith %}
+                </div>
+
+                <p class="related-product-name">
+                    {{ related_bag.name }}
+                </p>
+
+            </a>
+
+        {% endfor %}
+
+    </div>
+
+</section>
+{% endif %}
+{% endblock %}
 
 {% block extra_js %}
 <script src="{% static 'store/js/gallery.js' %}"></script>
