@@ -16,6 +16,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
     <meta name="theme-color" content="#f2f1ed">
 
+    <link rel="icon" href="{% url 'favicon' %}">
+    <link rel="apple-touch-icon" href="{% url 'apple_touch_icon' %}">
+
     <link rel="stylesheet" href="{% static 'store/css/style.css' %}">
 
     <style>
@@ -465,7 +468,7 @@
                 >
 
                     <a
-                        href="https://x.com/bagsnbeyond256/"
+                        href="https://x.com/heisjossen"
                         class="social-icon"
                         aria-label="X (Twitter)"
                         target="_blank"
@@ -495,8 +498,13 @@
                         </svg>
                     </a>
 
+
+                    {% comment %}
+
+                    Instagram is hidden until there is a real profile URL.
+
                     <a
-                        href="https://www.instagram.com/bagsandbeyond256/"
+                        href="#"
                         class="social-icon"
                         aria-label="Instagram"
                         target="_blank"
@@ -531,6 +539,8 @@
                             ></circle>
                         </svg>
                     </a>
+
+                    {% endcomment %}
 
 
                     <a

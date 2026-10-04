@@ -27,4 +27,20 @@ urlpatterns = [
     ),
 
     path("login/", views.login_view, name="login"),
+
+    path("healthz/", views.healthz, name="healthz"),
+
+    path(
+        "favicon.ico",
+        views.site_icon,
+        {"filename": "favicon.ico"},
+        name="favicon",
+    ),
+
+    path(
+        "apple-touch-icon.png",
+        views.site_icon,
+        {"filename": "apple-touch-icon.png"},
+        name="apple_touch_icon",
+    ),
 ]

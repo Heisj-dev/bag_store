@@ -6,21 +6,113 @@ let currentSlide = 0;
 
 
 /* =========================
-   UPDATE GALLERY
+   HOW THE GALLERY WORKS
+
+   The photos sit side by side inside .gallery-track. The browser itself
+   scrolls the track sideways and snaps to one photo at a time (see the
+   .gallery-track rules in style.css), so a swipe is handled by the phone,
+   not by this script. That is what keeps swiping reliable on iPhone.
+
+   This script only:
+     - lights the dot of the photo that is showing, and
+     - moves to a photo when a dot, an arrow or a keyboard arrow is used.
    ========================= */
 
-function updateGallery() {
 
-    if (!galleryTrack || gallerySlides.length === 0) {
-        return;
+/* =========================
+   HELPERS
+   ========================= */
+
+function slideWidth() {
+    return galleryTrack.clientWidth;
+}
+
+function prefersReducedMotion() {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function scrollTrackTo(left, smooth) {
+
+    if (typeof galleryTrack.scrollTo === "function") {
+        galleryTrack.scrollTo({
+            left: left,
+            behavior: smooth ? "smooth" : "auto"
+        });
+    } else {
+        galleryTrack.scrollLeft = left;
     }
+}
 
-    galleryTrack.style.transform =
-        `translateX(-${currentSlide * 100}%)`;
+
+/* =========================
+   DOTS
+   ========================= */
+
+function updateDots() {
 
     galleryDots.forEach(function (dot, index) {
         dot.classList.toggle("active", index === currentSlide);
     });
+}
+
+
+/* =========================
+   FOLLOW THE SCROLLING
+   (a swipe moves the track: work out which photo is showing)
+   ========================= */
+
+let scrollTarget = null;      // where a dot / arrow click is taking the track
+let scrollTargetTimer = null;
+let scrollQueued = false;
+
+function syncFromScroll() {
+
+    const width = slideWidth();
+
+    if (width === 0) {
+        return;
+    }
+
+    // While the track glides to a photo chosen with a dot or an arrow,
+    // wait until it arrives (the right dot is already lit).
+    if (scrollTarget !== null) {
+
+        if (Math.abs(galleryTrack.scrollLeft - scrollTarget) > 2) {
+            return;
+        }
+
+        scrollTarget = null;
+        clearTimeout(scrollTargetTimer);
+    }
+
+    let index = Math.round(galleryTrack.scrollLeft / width);
+    index = Math.max(0, Math.min(index, gallerySlides.length - 1));
+
+    if (index !== currentSlide) {
+        currentSlide = index;
+        updateDots();
+    }
+}
+
+if (galleryTrack) {
+
+    galleryTrack.addEventListener(
+        "scroll",
+        function () {
+
+            if (scrollQueued) {
+                return;
+            }
+
+            scrollQueued = true;
+
+            window.requestAnimationFrame(function () {
+                scrollQueued = false;
+                syncFromScroll();
+            });
+        },
+        { passive: true }
+    );
 }
 
 
@@ -30,21 +122,32 @@ function updateGallery() {
 
 function goToSlide(index) {
 
-    if (gallerySlides.length === 0) {
+    if (!galleryTrack || gallerySlides.length === 0) {
         return;
     }
 
+    if (index >= gallerySlides.length) {
+        index = 0;
+    }
+
+    if (index < 0) {
+        index = gallerySlides.length - 1;
+    }
+
     currentSlide = index;
+    updateDots();
 
-    if (currentSlide >= gallerySlides.length) {
-        currentSlide = 0;
-    }
+    scrollTarget = index * slideWidth();
 
-    if (currentSlide < 0) {
-        currentSlide = gallerySlides.length - 1;
-    }
+    // Safety: if the glide is interrupted (a finger lands on the photo),
+    // stop waiting for it and read the real position instead.
+    clearTimeout(scrollTargetTimer);
+    scrollTargetTimer = setTimeout(function () {
+        scrollTarget = null;
+        syncFromScroll();
+    }, 1200);
 
-    updateGallery();
+    scrollTrackTo(scrollTarget, !prefersReducedMotion());
 }
 
 function showNextSlide() {
@@ -94,6 +197,20 @@ document.addEventListener("keydown", function (event) {
         return;
     }
 
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+        return;
+    }
+
+    // Arrow keys must keep working inside the search box and other fields.
+    const target = event.target;
+
+    if (
+        target &&
+        (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
+    ) {
+        return;
+    }
+
     if (event.key === "ArrowRight") {
         event.preventDefault();
         showNextSlide();
@@ -108,53 +225,33 @@ document.addEventListener("keydown", function (event) {
 
 
 /* =========================
-   TOUCH / SWIPE CONTROLS
+   TURNING THE PHONE
+   (keep the same photo showing when the width changes.
+   The iPhone address bar growing or shrinking changes
+   only the height, so it is ignored.)
    ========================= */
 
-let touchStartX = 0;
-let touchEndX = 0;
+let lastWidth = galleryTrack ? slideWidth() : 0;
 
-if (galleryTrack) {
+window.addEventListener("resize", function () {
 
-    galleryTrack.addEventListener(
-        "touchstart",
-        function (event) {
-            touchStartX = event.touches[0].clientX;
-        },
-        { passive: true }
-    );
-
-    galleryTrack.addEventListener(
-        "touchend",
-        function (event) {
-            touchEndX = event.changedTouches[0].clientX;
-            handleSwipe();
-        },
-        { passive: true }
-    );
-}
-
-function handleSwipe() {
-
-    const swipeDistance = touchEndX - touchStartX;
-    const minimumSwipeDistance = 50;
-
-    if (Math.abs(swipeDistance) < minimumSwipeDistance) {
+    if (!galleryTrack) {
         return;
     }
 
-    if (swipeDistance < 0) {
-        showNextSlide();
+    const width = slideWidth();
+
+    if (width === lastWidth) {
+        return;
     }
 
-    if (swipeDistance > 0) {
-        showPreviousSlide();
-    }
-}
+    lastWidth = width;
+    scrollTrackTo(currentSlide * width, false);
+});
 
 
 /* =========================
    INITIALIZE
    ========================= */
 
-updateGallery();
+updateDots();

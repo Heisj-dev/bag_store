@@ -1,21 +1,29 @@
-from django.test import TestCase, Client
+from django.apps import apps as django_apps
+from django.http import Http404
+from django.test import TestCase, Client, RequestFactory
 from django.contrib.auth.models import User
 from django.contrib.sites.models import Site
+from . import views
 from .models import Category, Bag, Order, OrderItem
 from django.core import mail
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
+import importlib
+import io
 import json
 import re
 import time
+from contextlib import redirect_stdout
 from datetime import timedelta
+from types import SimpleNamespace
 from unittest import mock
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import jwt
 import requests
 from allauth.socialaccount.models import SocialApp
+from PIL import Image
 
 
 class BagModelTests(TestCase):
@@ -1699,3 +1707,234 @@ class HomepageAdminTests(TestCase):
         self.assertEqual(names(self.client.get("/")), ["Keep"])
         drop.refresh_from_db()
         self.assertFalse(drop.show_on_homepage)
+
+
+# ===========================================================================
+# THE FIXED CATEGORY LIST (A TO Z), THE HEALTH CHECK AND THE FAVICON
+# ===========================================================================
+
+CATEGORY_LIST = [
+    "Briefcases",
+    "Camera Bags",
+    "Crossbody Bags",
+    "Duffle Bags",
+    "Gym Bags",
+    "Handbags",
+    "Kids Bags",
+    "Laptop Bags",
+    "Luggage Bags",
+    "Lunchbox Bags",
+    "Marathon Kit Bags",
+    "Suit Carriers",
+    "Suitcase Sets",
+    "Suitcase Single",
+    "Tote Bags",
+]
+
+fixed_category_migration = importlib.import_module(
+    "store.migrations.0012_fixed_category_list"
+)
+
+
+def run_category_migration():
+    """Run the data part of migration 0012 now, and return what it printed."""
+    printed = io.StringIO()
+    with redirect_stdout(printed):
+        fixed_category_migration.set_categories(
+            django_apps, SimpleNamespace(connection=connection)
+        )
+    return printed.getvalue()
+
+
+class FixedCategoryListTests(TestCase):
+    """The shop has the 15 categories the owner chose, and always lists them A to Z."""
+
+    def test_a_new_database_has_exactly_the_fifteen_categories(self):
+        self.assertEqual(
+            list(Category.objects.values_list("name", flat=True)), CATEGORY_LIST
+        )
+        self.assertEqual(CATEGORY_LIST, sorted(CATEGORY_LIST))
+
+    def test_the_admin_calls_them_categories(self):
+        self.assertEqual(str(Category._meta.verbose_name_plural), "categories")
+
+    def test_the_menu_and_the_filter_buttons_list_them_a_to_z(self):
+        response = self.client.get("/")
+        self.assertEqual([c.name for c in response.context["categories"]], CATEGORY_LIST)
+        self.assertEqual([c.name for c in response.context["nav_categories"]], CATEGORY_LIST)
+
+        links = [
+            unquote(name)
+            for name in re.findall(r'href="/\?category=([^"&]+)"', response.content.decode())
+        ]
+        self.assertEqual(list(dict.fromkeys(links)), CATEGORY_LIST)      # in this order, first to last
+
+    def test_a_category_added_later_slots_into_the_order(self):
+        Category.objects.create(name="Backpacks")
+        Category.objects.create(name="Wallets")
+        names = [c.name for c in self.client.get("/").context["categories"]]
+        self.assertEqual(names[0], "Backpacks")
+        self.assertEqual(names[-1], "Wallets")
+        self.assertEqual(names, sorted(names))
+
+    def test_filtering_by_a_new_category_name_works(self):
+        make_bag("Gym Thing", category=Category.objects.get(name="Gym Bags"))
+        make_bag("Tote Thing", category=Category.objects.get(name="Tote Bags"))
+        response = self.client.get("/", {"category": "Gym Bags"})
+        self.assertEqual(names(response), ["Gym Thing"])
+        self.assertContains(response, '<h1 class="shop-title">Gym Bags</h1>')
+
+
+class FixedCategoryMigrationTests(TestCase):
+    """Moving an older shop onto the fixed list without losing a bag."""
+
+    def setUp(self):
+        Category.objects.all().delete()          # start from an older shop's own messy list
+
+    def bag_in(self, category, name):
+        return Bag.objects.create(name=name, category=category, price=50000, stock=3)
+
+    def category_names(self):
+        return list(Category.objects.values_list("name", flat=True))
+
+    def test_an_empty_shop_gets_the_fifteen_categories(self):
+        self.assertEqual(run_category_migration(), "")
+        self.assertEqual(self.category_names(), CATEGORY_LIST)
+
+    def test_old_names_that_mean_a_new_category_are_renamed(self):
+        gym = Category.objects.create(name="Gym")
+        tote = Category.objects.create(name="tote")
+        carriers = Category.objects.create(name="suit carrier")
+        sets = Category.objects.create(name="suitecase sets")        # the spelling the owner typed
+        gym_bag = self.bag_in(gym, "Gym One")
+
+        self.assertEqual(run_category_migration(), "")
+
+        for category, new_name in (
+            (gym, "Gym Bags"), (tote, "Tote Bags"),
+            (carriers, "Suit Carriers"), (sets, "Suitcase Sets"),
+        ):
+            category.refresh_from_db()
+            self.assertEqual(category.name, new_name)                # same category, new name
+
+        gym_bag.refresh_from_db()
+        self.assertEqual(gym_bag.category_id, gym.id)                # the bag did not move
+        self.assertEqual(self.category_names(), CATEGORY_LIST)
+
+    def test_two_old_categories_with_the_same_meaning_are_merged(self):
+        first = Category.objects.create(name="Gym")
+        second = Category.objects.create(name="gym bag")
+        self.bag_in(first, "Gym One")
+        self.bag_in(second, "Gym Two")
+
+        run_category_migration()
+
+        merged = Category.objects.get(name="Gym Bags")
+        self.assertEqual(
+            set(Bag.objects.filter(category=merged).values_list("name", flat=True)),
+            {"Gym One", "Gym Two"},
+        )
+        self.assertEqual(self.category_names(), CATEGORY_LIST)
+
+    def test_a_duplicated_new_category_is_merged(self):
+        one = Category.objects.create(name="Handbags")
+        two = Category.objects.create(name="Handbags")
+        self.bag_in(one, "Lady One")
+        self.bag_in(two, "Lady Two")
+
+        run_category_migration()
+
+        self.assertEqual(Category.objects.filter(name="Handbags").count(), 1)
+        self.assertEqual(Bag.objects.filter(category__name="Handbags").count(), 2)
+        self.assertEqual(self.category_names(), CATEGORY_LIST)
+
+    def test_empty_old_categories_are_removed(self):
+        Category.objects.create(name="Women")
+        Category.objects.create(name="Everyday")
+        self.assertEqual(run_category_migration(), "")
+        self.assertEqual(self.category_names(), CATEGORY_LIST)
+
+    def test_an_old_category_that_still_holds_bags_is_kept_and_reported(self):
+        backpack = Category.objects.create(name="Backpack")          # no new category fits
+        self.bag_in(backpack, "Pack A")
+        self.bag_in(backpack, "Pack B")
+
+        printed = run_category_migration()
+
+        self.assertIn("Backpack (2 bags)", printed)
+        self.assertEqual(self.category_names(), ["Backpack"] + CATEGORY_LIST)
+        self.assertEqual(Bag.objects.filter(category=backpack).count(), 2)   # nothing lost
+
+    def test_running_it_twice_changes_nothing(self):
+        gym = Category.objects.create(name="Gym")
+        self.bag_in(gym, "Gym One")
+        run_category_migration()
+        before = list(Category.objects.values_list("id", "name"))
+
+        self.assertEqual(run_category_migration(), "")
+
+        self.assertEqual(list(Category.objects.values_list("id", "name")), before)
+
+
+class HealthCheckTests(TestCase):
+    """/healthz/ is what an uptime monitor opens to keep a free Render site awake."""
+
+    def test_it_answers_ok_without_touching_the_database(self):
+        with self.assertNumQueries(0):
+            response = self.client.get("/healthz/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"ok")
+        self.assertEqual(response["Content-Type"], "text/plain")
+
+    def test_it_is_never_cached(self):
+        self.assertIn("no-store", self.client.get("/healthz/")["Cache-Control"])
+
+    def test_monitors_that_use_head_get_a_200_too(self):
+        self.assertEqual(self.client.head("/healthz/").status_code, 200)
+
+    def test_it_only_answers_get_and_head(self):
+        self.assertEqual(self.client.post("/healthz/").status_code, 405)
+
+
+class FaviconTests(TestCase):
+    """The tab icon and the iPhone home-screen icon."""
+
+    def fetch(self, url):
+        response = self.client.get(url)
+        data = b"".join(response.streaming_content)
+        response.close()
+        return response, data
+
+    def test_the_tab_icon_is_served_at_favicon_ico(self):
+        response, data = self.fetch("/favicon.ico")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/x-icon")
+        self.assertEqual(data[:4], b"\x00\x00\x01\x00")               # the .ico file signature
+        sizes = Image.open(io.BytesIO(data)).ico.sizes()
+        self.assertTrue({(16, 16), (32, 32), (48, 48)} <= set(sizes))
+
+    def test_the_iphone_icon_is_a_180px_png(self):
+        response, data = self.fetch("/apple-touch-icon.png")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/png")
+        self.assertEqual(data[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(Image.open(io.BytesIO(data)).size, (180, 180))
+
+    def test_the_icons_can_be_cached(self):
+        response, _ = self.fetch("/favicon.ico")
+        self.assertIn("max-age=", response["Cache-Control"])
+
+    def test_every_page_links_to_the_icons(self):
+        bag = make_bag("Icon Bag", featured=1)
+        for url in ("/", "/?page=2", "/cart/", f"/bag/{bag.id}/", "/login/"):
+            html = self.client.get(url, follow=True).content.decode()
+            self.assertIn('<link rel="icon" href="/favicon.ico">', html, url)
+            self.assertIn(
+                '<link rel="apple-touch-icon" href="/apple-touch-icon.png">', html, url
+            )
+
+    def test_an_unknown_icon_name_is_a_404(self):
+        request = RequestFactory().get("/nope.png")
+        for name in ("nope.png", "../models.py"):
+            with self.assertRaises(Http404):
+                views.site_icon(request, name)

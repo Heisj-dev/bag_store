@@ -100,7 +100,7 @@
     --s-9:  112px;   /* section gap */
 
     /* ---- Layout ---------------------------------------- */
-    --header-h:  76px;
+    --header-h:  114px;   /* 1.5 x the old 76px */
     --gutter:    16px;
     --page-gap:  40px;   /* every page starts this far under the header */
     --max:       1320px;
@@ -120,7 +120,7 @@
 
 @media (min-width: 900px) {
     :root {
-        --header-h:  92px;
+        --header-h:  138px;   /* 1.5 x the old 92px */
         --gutter:    32px;
         --page-gap:  64px;
     }
@@ -697,28 +697,42 @@ input:-webkit-autofill:focus {
     color: var(--ink);
 }
 
+/*
+ * The logo is 3.466 times as wide as it is tall. On phones it is made as big
+ * as it can be while still clearing the menu / search icons on the left and
+ * the cart / account icons on the right (170px between the two sides), up to
+ * 60px tall: 1.5 x the old 40px. Wider screens have the room for the full 1.5x.
+ */
 .brand img {
     display: block;
     width: auto;
     max-width: none;
-    height: 40px;            /* same compact logo as before */
-}
-
-/* ~138px wide at 40px tall. Below 360px that would crowd the icons. */
-@media (max-width: 359px) {
-    .brand img { height: 34px; }
-}
-
-@media (max-width: 339px) {
-    .brand img { height: 30px; }
+    height: clamp(34px, calc((100vw - (var(--gutter) * 2) - 170px) / 3.466), 60px);
 }
 
 @media (min-width: 600px) {
-    .brand img { height: 44px; }
+    .brand img {
+        height: clamp(52px, calc((100vw - (var(--gutter) * 2) - 340px) / 3.466), 66px);   /* up to 1.5 x 44px */
+    }
 }
 
 @media (min-width: 900px) {
-    .brand img { height: 52px; }   /* a little more presence on desktop */
+    .brand img { height: 78px; }   /* 1.5 x the old 52px */
+
+    /* Desktop has the room: header icons grow a little with the taller header */
+    .icon-button {
+        width: 48px;
+        height: 48px;
+    }
+
+    .icon-button svg {
+        width: 28px;
+        height: 28px;
+    }
+
+    .menu-toggle {
+        margin-left: -10px;      /* keeps the glyph on the gutter edge: (48 - 28) / 2 */
+    }
 }
 
 /* Cart badge — pink, small, ringed so it sits cleanly on the icon */
@@ -1755,15 +1769,31 @@ input:-webkit-autofill:focus {
 .gallery-track {
     display: flex;
     width: 100%;
-    transition: transform 380ms var(--ease);
-    touch-action: pan-y;
-    will-change: transform;
+
+    /*
+     * Swiping is the browser's own sideways scrolling, snapping to one photo
+     * at a time. (Moving the track with a script stopped answering to swipes
+     * on iPhone after the first one.) The scroll bar is hidden.
+     */
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+}
+
+.gallery-track::-webkit-scrollbar {
+    display: none;
 }
 
 .gallery-slide {
     flex: 0 0 100%;
     width: 100%;
     aspect-ratio: 4 / 5;
+
+    scroll-snap-align: start;
+    scroll-snap-stop: always;      /* one photo per swipe, never skipping */
 
     display: flex;
     align-items: center;

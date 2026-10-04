@@ -1,5 +1,6 @@
 import uuid
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.models import User
@@ -15,8 +16,11 @@ from django.db.models import Q, prefetch_related_objects
 from django.core.paginator import Paginator
 from django.core.validators import validate_email
 from django.core.mail import send_mail
+from django.http import FileResponse, Http404, HttpResponse
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.cache import cache_control, never_cache
+from django.views.decorators.http import require_safe
 
 from allauth.socialaccount.adapter import get_adapter as get_social_adapter
 
@@ -740,8 +744,7 @@ def checkout(request):
                 f"Payment status: {order.payment_status}\n"
             ),
             from_email=None,
-            recipient_list=["jossenndiwalana@gmail.com",
-                            "ssemanyijoel22@gmail.com"],
+            recipient_list=["jossenndiwalana@gmail.com"],
             fail_silently=True,
         )
 
@@ -794,3 +797,48 @@ def order_history(request):
             "orders": orders,
         }
     )
+
+
+# ---------------------------------------------------------------------------
+# Keeping the site awake, and the site icons
+# ---------------------------------------------------------------------------
+
+@require_safe
+@never_cache
+def healthz(request):
+    """
+    A tiny page that always answers "ok" and touches nothing: no database, no
+    session, no template. An uptime monitor opens it every few minutes so
+    Render's free plan never sees 15 quiet minutes, and the site is never put
+    to sleep (see "Keeping the site awake on Render" in README.md).
+    """
+
+    return HttpResponse("ok", content_type="text/plain")
+
+
+ICON_FOLDER = Path(__file__).resolve().parent / "static" / "store" / "images"
+
+ICON_FILES = {
+    "favicon.ico": "image/x-icon",
+    "apple-touch-icon.png": "image/png",
+}
+
+
+@require_safe
+@cache_control(public=True, max_age=60 * 60 * 24 * 7)
+def site_icon(request, filename):
+    """
+    The browser tab icon (/favicon.ico) and the iPhone home-screen icon
+    (/apple-touch-icon.png). They are answered at the addresses browsers ask
+    for, straight from the files in store/static/store/images/, so they do not
+    depend on collectstatic.
+    """
+
+    content_type = ICON_FILES.get(filename)
+
+    path = ICON_FOLDER / filename
+
+    if content_type is None or not path.is_file():
+        raise Http404("No such icon.")
+
+    return FileResponse(open(path, "rb"), content_type=content_type)

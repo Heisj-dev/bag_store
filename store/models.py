@@ -14,6 +14,11 @@ class Category(models.Model):
         blank=True
     )
 
+    class Meta:
+        # Always A to Z: the menu, the filter buttons and the admin.
+        ordering = ["name"]
+        verbose_name_plural = "categories"
+
     def __str__(self):
         return self.name
 

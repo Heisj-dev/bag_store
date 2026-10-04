@@ -76,6 +76,46 @@ any time from "Forgot password?".
 
 ---
 
+## Categories
+
+The shop has these 15 categories and no others, always listed A to Z in the menu, the filter buttons and the admin:
+
+Briefcases, Camera Bags, Crossbody Bags, Duffle Bags, Gym Bags, Handbags, Kids Bags, Laptop Bags, Luggage Bags, Lunchbox Bags, Marathon Kit Bags, Suit Carriers, Suitcase Sets, Suitcase Single, Tote Bags.
+
+Migration `0012_fixed_category_list` sets them when you run `python manage.py migrate`:
+
+- Old categories that mean the same thing are renamed (for example Gym becomes Gym Bags).
+- Empty old categories are removed.
+- An old category that still holds bags is kept, so no bag is lost. The migration prints its name. In the admin, open each of those bags, pick one of the 15 categories, then delete the old category.
+
+A category you add later in the admin is still listed A to Z.
+
+---
+
+## Favicon
+
+The tab icon and the iPhone home-screen icon are `favicon.ico` and `apple-touch-icon.png` in `store/static/store/images/`. They are made from the pink bag in the logo and are served at `/favicon.ico` and `/apple-touch-icon.png`. To change them, replace those two files (the .ico holds 16, 32 and 48 px; the iPhone icon is 180 x 180 px).
+
+---
+
+## Keeping the site awake on Render
+
+Render's free web services are spun down after 15 minutes without a visit. The next visitor waits up to a minute while Render shows its loading page. To stop that:
+
+1. **Free: have a monitor open the site every 5 minutes.** `/healthz/` is a tiny page made for this: it answers `ok` and never touches the database.
+   - Make a free account at uptimerobot.com (its free plan checks every 5 minutes).
+   - Add a new monitor of type **HTTP(s)** with the URL `https://YOUR-SITE.onrender.com/healthz/` (use your own domain if you have one) and a 5 minute interval.
+   - Open that URL in a browser once: you should see `ok`.
+2. **Paid: always on.** Upgrade the service to a paid instance in the Render dashboard (the Starter type is about $7 a month). It is never spun down.
+
+Things to know about option 1:
+
+- Render gives each workspace 750 free instance hours a month. A site that never sleeps runs about 720-744 hours, so it only fits if it is the only free web service in the workspace. If the hours run out, Render suspends all your free web services until the next month.
+- Render can still restart a free service now and then, so an occasional slow first visit can still happen.
+- If your database is Render's free Postgres, it expires after 30 days (then a 14-day grace period before it is deleted). Upgrade it or move the data before then.
+
+---
+
 ## Installation & Setup
 
 ### 1. Clone the repository and enter the project folder
