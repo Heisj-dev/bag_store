@@ -1,5 +1,9 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.core.validators import MinValueValidator
+
+# How many bags the homepage shows. The view and the admin both use this.
+HOMEPAGE_BAG_LIMIT = 12
 
 
 class Category(models.Model):
@@ -42,12 +46,45 @@ class Bag(models.Model):
         default=0
     )
 
+    show_on_homepage = models.BooleanField(
+        default=False,
+        verbose_name="show on homepage",
+        help_text=(
+            "Tick to feature this bag on the homepage. A new bag is never "
+            "featured automatically."
+        ),
+    )
+
+    homepage_order = models.PositiveIntegerField(
+        default=0,
+        verbose_name="homepage position",
+        help_text=(
+            "Where this bag appears on the homepage: 1 is first, 2 is second, "
+            "and so on. The homepage shows at most 12 bags, in this order."
+        ),
+    )
+
     created_at = models.DateTimeField(
         auto_now_add=True
     )
 
     def __str__(self):
         return self.name
+
+    @property
+    def is_in_stock(self):
+        return self.stock > 0
+
+    def clean(self):
+        super().clean()
+
+        if self.show_on_homepage and self.homepage_order < 1:
+            raise ValidationError({
+                "homepage_order": (
+                    "Give this bag a homepage position of 1 or more "
+                    "(1 is shown first)."
+                )
+            })
 
 
 class BagImage(models.Model):

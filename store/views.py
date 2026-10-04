@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal, InvalidOperation
 
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.models import User
@@ -10,75 +11,270 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, prefetch_related_objects
+from django.core.paginator import Paginator
 from django.core.validators import validate_email
 from django.core.mail import send_mail
+from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 
 from allauth.socialaccount.adapter import get_adapter as get_social_adapter
 
-from .models import Bag, Category, Order, OrderItem
+from .models import HOMEPAGE_BAG_LIMIT, Bag, Category, Order, OrderItem
 from .cart import Cart
 from .emails import send_order_received_email
-def index(request):
 
-    bags = Bag.objects.select_related("category").prefetch_related("images")
+# ---------------------------------------------------------------------------
+# Browsing the catalog: the homepage is Page 1 of the catalogue
+# ---------------------------------------------------------------------------
 
-    category_slug = request.GET.get("category")
-    query = request.GET.get("q")
-    sort = request.GET.get("sort")
-    in_stock_only = request.GET.get("in_stock")
-    min_price = request.GET.get("min_price")
-    max_price = request.GET.get("max_price")
+# Bags per page on Page 2, 3, ... of the plain homepage and on every page of
+# search / filter / sort results. Page 1 of the plain homepage is the picked
+# bags instead: at most HOMEPAGE_BAG_LIMIT (12, set in models.py).
+CATALOGUE_PAGE_SIZE = 16
 
-    if category_slug:
-        bags = bags.filter(category__name__iexact=category_slug)
+# ?sort=... -> database ordering. Every ordering ends with a unique column, so
+# a bag can never repeat or go missing between two pages.
+SORT_ORDERINGS = {
+    "price_asc": ("price", "id"),
+    "price_desc": ("-price", "id"),
+    "newest": ("-id",),
+    "name_asc": ("name", "id"),
+}
 
-    if query:
+DEFAULT_ORDERING = ("-created_at", "-id")
+
+
+def _clean_price(raw):
+    """The price text if it is a valid, non-negative number, otherwise ""."""
+
+    raw = (raw or "").strip()
+
+    if not raw:
+        return ""
+
+    try:
+        value = Decimal(raw)
+    except InvalidOperation:
+        return ""
+
+    if not value.is_finite() or value < 0:
+        return ""
+
+    return raw
+
+
+def _read_filters(request):
+    """
+    The browsing options in the address bar (search, category, stock, price,
+    sort), cleaned up. An empty or invalid option counts as "not used".
+    """
+
+    get = request.GET
+
+    sort = get.get("sort", "").strip()
+
+    return {
+        "query": get.get("q", "").strip(),
+        "category": get.get("category", "").strip(),
+        "in_stock": get.get("in_stock", "").strip(),
+        "min_price": _clean_price(get.get("min_price")),
+        "max_price": _clean_price(get.get("max_price")),
+        "sort": sort if sort in SORT_ORDERINGS else "",
+    }
+
+
+def _filters_in_use(filters):
+    """True as soon as the customer has used any search / filter / sort."""
+    return any(filters.values())
+
+
+def _all_bags():
+    return Bag.objects.select_related("category").prefetch_related("images")
+
+
+def _filter_and_sort(bags, filters):
+    """Apply the customer's filters and sort to a set of bags."""
+
+    if filters["category"]:
+        bags = bags.filter(category__name__iexact=filters["category"])
+
+    if filters["query"]:
         bags = bags.filter(
-            Q(name__icontains=query) | Q(description__icontains=query)
+            Q(name__icontains=filters["query"]) |
+            Q(description__icontains=filters["query"])
         )
 
-    if in_stock_only:
+    if filters["in_stock"]:
         bags = bags.filter(stock__gt=0)
 
-    if min_price:
-        try:
-            bags = bags.filter(price__gte=float(min_price))
-        except ValueError:
-            min_price = ""
+    if filters["min_price"]:
+        bags = bags.filter(price__gte=Decimal(filters["min_price"]))
 
-    if max_price:
-        try:
-            bags = bags.filter(price__lte=float(max_price))
-        except ValueError:
-            max_price = ""
+    if filters["max_price"]:
+        bags = bags.filter(price__lte=Decimal(filters["max_price"]))
 
-    if sort == "price_asc":
-        bags = bags.order_by("price")
-    elif sort == "price_desc":
-        bags = bags.order_by("-price")
-    elif sort == "newest":
-        bags = bags.order_by("-id")
-    elif sort == "name_asc":
-        bags = bags.order_by("name")
+    return bags.order_by(
+        *SORT_ORDERINGS.get(filters["sort"], DEFAULT_ORDERING)
+    )
 
-    categories = Category.objects.all()
+
+def _filter_context(filters):
+    """The filter values the templates show back to the customer."""
+
+    return {
+        "query": filters["query"],
+        "category_slug": filters["category"],
+        "sort": filters["sort"],
+        "in_stock_only": filters["in_stock"],
+        "min_price": filters["min_price"],
+        "max_price": filters["max_price"],
+    }
+
+
+def _picked_bags():
+    """
+    Page 1 of the catalogue: the bags picked in the admin (show_on_homepage),
+    in homepage_order, at most HOMEPAGE_BAG_LIMIT. If fewer are picked, it is
+    just those: Page 1 is never topped up with other bags.
+    """
+
+    return list(
+        Bag.objects
+        .filter(show_on_homepage=True)
+        .select_related("category")
+        .order_by("homepage_order", "-created_at", "id")
+        [:HOMEPAGE_BAG_LIMIT]
+    )
+
+
+def _page_numbers(paginator, page):
+    """The numbers for the page bar: 1 ... 15 16 17 ... 32."""
+
+    return paginator.get_elided_page_range(
+        page.number, on_each_side=1, on_ends=1
+    )
+
+
+def _results_page(page_number, filters):
+    """
+    Search / filter / sort: EVERY matching bag (featured ones too, so a search
+    can always find a bag), CATALOGUE_PAGE_SIZE per page.
+    """
+
+    paginator = Paginator(
+        _filter_and_sort(_all_bags(), filters),
+        CATALOGUE_PAGE_SIZE,
+    )
+
+    page = paginator.get_page(page_number)
+
+    return {
+        "bags": page,
+        "page_obj": page,
+        "result_count": paginator.count,
+        "page_numbers": _page_numbers(paginator, page),
+        "is_curated": False,
+    }
+
+
+def _catalogue_page(page_number):
+    """
+    The plain homepage: Page 1 of the whole catalogue.
+
+    Page 1      the picked bags (see _picked_bags).
+    Page 2, 3.. every bag that is NOT on Page 1, newest first,
+                CATALOGUE_PAGE_SIZE per page.
+
+    Only the ids really shown on Page 1 are left out of the later pages, so a
+    bag picked beyond the 12 limit still turns up on a later page, and no bag
+    is skipped or repeated. Nothing loads the whole catalogue: a later page
+    costs one COUNT(*) plus one LIMIT/OFFSET query.
+    """
+
+    picked = _picked_bags()
+
+    later = Paginator(
+        _all_bags()
+        .exclude(id__in=[bag.id for bag in picked])
+        .order_by(*DEFAULT_ORDERING),
+        CATALOGUE_PAGE_SIZE,
+        allow_empty_first_page=False,
+    )
+
+    # The page links: one for Page 1, then one for every page of `later`.
+    links = Paginator(range(1 + later.num_pages), 1)
+
+    page = links.get_page(page_number)
+
+    if page.number == 1:
+        prefetch_related_objects(picked, "images")    # the photos, one query
+        bags = picked
+    else:
+        bags = later.page(page.number - 1)
+
+    return {
+        "bags": bags,
+        "page_obj": page,
+        "result_count": len(picked) + later.count,
+        "page_numbers": _page_numbers(links, page),
+        "is_curated": page.number == 1,
+    }
+
+
+def index(request):
+    """
+    The homepage, which is Page 1 of a paginated catalogue.
+
+    Plain homepage: Page 1 shows the bags picked in the admin, and /?page=2,
+    /?page=3, ... list every other bag (see _catalogue_page).
+
+    Browsing: as soon as the customer uses search, a category, the stock or
+    price filters or a sort, every matching bag is listed, CATALOGUE_PAGE_SIZE
+    per page (see _results_page).
+
+    The page bar (Prev | 1 | 2 | 3 | ... | Next) shows when there is more than
+    one page.
+    """
+
+    filters = _read_filters(request)
+
+    page_number = request.GET.get("page")
+
+    if _filters_in_use(filters):
+        shown = _results_page(page_number, filters)
+    else:
+        shown = _catalogue_page(page_number)
+
+    # The address-bar options without "page", so every page link keeps the
+    # search, category, stock, price and sort the customer chose.
+    params = request.GET.copy()
+    params.pop("page", None)
 
     return render(
         request,
         "store/index.html",
         {
-            "bags": bags,
-            "categories": categories,
-            "query": query or "",
-            "category_slug": category_slug or "",
-            "sort": sort or "",
-            "in_stock_only": in_stock_only or "",
-            "min_price": min_price or "",
-            "max_price": max_price or "",
+            **shown,
+            "querystring": params.urlencode(),
+            "categories": Category.objects.all(),
+            **_filter_context(filters),
         }
     )
+
+
+def collection(request):
+    """
+    The old /collection/ address. The whole catalogue now lives on the
+    homepage, so send customers (and old bookmarks) there, keeping whatever
+    search, category, stock, price, sort or page is in the address.
+    """
+
+    target = reverse("index")
+
+    query = request.META.get("QUERY_STRING", "")
+
+    return redirect(f"{target}?{query}" if query else target)
 
 
 ORDER_STATUS_SEQUENCE = ["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED"]
@@ -212,9 +408,21 @@ def cart_add(request, bag_id):
 
     cart = Cart(request)
 
-    cart.add(bag)
+    if cart.add(bag):
 
-    messages.success(request,f"{bag.name.upper()} ADDED TO BAG")
+        messages.success(request, f"{bag.name.upper()} ADDED TO BAG")
+
+    elif bag.stock < 1:
+
+        messages.error(request, f"{bag.name.upper()} IS OUT OF STOCK.")
+
+    else:
+
+        messages.warning(
+            request,
+            f"ONLY {bag.stock} {bag.name.upper()} IN STOCK, "
+            f"AND YOU ALREADY HAVE THEM IN YOUR BAG."
+        )
 
     return redirect(
         "product_detail",
@@ -260,7 +468,12 @@ def cart_increase(request, bag_id):
 
     cart = Cart(request)
 
-    cart.increase(bag)
+    if not cart.increase(bag) and str(bag.id) in cart.cart:
+
+        messages.warning(
+            request,
+            f"NO MORE {bag.name.upper()} IN STOCK."
+        )
 
     return redirect("cart_detail")
 
@@ -527,7 +740,8 @@ def checkout(request):
                 f"Payment status: {order.payment_status}\n"
             ),
             from_email=None,
-            recipient_list=["jossenndiwalana@gmail.com"],
+            recipient_list=["jossenndiwalana@gmail.com",
+                            "ssemanyijoel22@gmail.com"],
             fail_silently=True,
         )
 

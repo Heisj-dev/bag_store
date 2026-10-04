@@ -82,7 +82,7 @@
             </form>
         {% else %}
             <button class="pdp-add-to-cart disabled" disabled>
-                Sold out
+                OUT OF STOCK
             </button>
         {% endif %}
 
@@ -104,7 +104,7 @@
         </dl>
 
         <p class="pdp-stock{% if bag.stock > 0 and bag.stock <= 5 %} pdp-stock-low{% elif bag.stock <= 0 %} pdp-stock-out{% endif %}">
-            {% if bag.stock <= 0 %}Currently unavailable{% elif bag.stock <= 5 %}Only {{ bag.stock }} left{% else %}In stock{% endif %}
+            {% if bag.stock <= 0 %}OUT OF STOCK{% elif bag.stock <= 5 %}Only {{ bag.stock }} left{% else %}In stock{% endif %}
         </p>
 
         <details class="pdp-accordion" open>
@@ -155,6 +155,10 @@
                 <p class="related-product-name">
                     {{ related_bag.name }}
                 </p>
+
+                {% if related_bag.stock < 1 %}
+                    <p class="related-product-stock">OUT OF STOCK</p>
+                {% endif %}
 
             </a>
 

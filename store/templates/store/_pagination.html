@@ -1,0 +1,53 @@
+{% comment %}
+    Page links for the collection. Shown only when there is more than one page
+    (13 or more bags). Every link carries the search, category, stock, price
+    and sort the customer chose ("querystring" is the address-bar options
+    without "page").
+{% endcomment %}
+{% if page_obj.has_other_pages %}
+<nav class="pagination" aria-label="Pages">
+
+    {% if page_obj.has_previous %}
+        <a
+            class="pagination-step"
+            rel="prev"
+            href="?{% if querystring %}{{ querystring }}&amp;page={{ page_obj.previous_page_number }}{% else %}page={{ page_obj.previous_page_number }}{% endif %}"
+        >
+            Prev
+        </a>
+    {% else %}
+        <span class="pagination-step pagination-disabled" aria-disabled="true">Prev</span>
+    {% endif %}
+
+    <ol class="pagination-pages">
+        {% for number in page_numbers %}
+            {% if number == page_obj.paginator.ELLIPSIS %}
+                <li class="pagination-gap" aria-hidden="true">…</li>
+            {% elif number == page_obj.number %}
+                <li><span class="pagination-link is-current" aria-current="page">{{ number }}</span></li>
+            {% else %}
+                <li>
+                    <a
+                        class="pagination-link"
+                        href="?{% if querystring %}{{ querystring }}&amp;page={{ number }}{% else %}page={{ number }}{% endif %}"
+                        aria-label="Page {{ number }}"
+                    >{{ number }}</a>
+                </li>
+            {% endif %}
+        {% endfor %}
+    </ol>
+
+    {% if page_obj.has_next %}
+        <a
+            class="pagination-step"
+            rel="next"
+            href="?{% if querystring %}{{ querystring }}&amp;page={{ page_obj.next_page_number }}{% else %}page={{ page_obj.next_page_number }}{% endif %}"
+        >
+            Next
+        </a>
+    {% else %}
+        <span class="pagination-step pagination-disabled" aria-disabled="true">Next</span>
+    {% endif %}
+
+</nav>
+{% endif %}

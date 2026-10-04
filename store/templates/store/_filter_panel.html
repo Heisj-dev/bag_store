@@ -1,0 +1,118 @@
+{% comment %}
+    Category pills, sort, stock and price filters.
+    Needs:  list_url  - the page these filters belong to (homepage or collection)
+    Every control keeps the others, and none of them keeps "page", so changing
+    a filter always starts again from page 1.
+{% endcomment %}
+<div class="filter-panel" id="filter-panel">
+    <div class="filter-panel-inner">
+
+        <nav class="category-filter" aria-label="Product categories">
+
+            <a
+                href="{{ list_url }}?{% if query %}q={{ query|urlencode }}&{% endif %}{% if sort %}sort={{ sort }}&{% endif %}{% if in_stock_only %}in_stock=1&{% endif %}{% if min_price %}min_price={{ min_price|urlencode }}&{% endif %}{% if max_price %}max_price={{ max_price|urlencode }}{% endif %}"
+                class="category-filter-link{% if not category_slug %} active{% endif %}"
+            >
+                All
+            </a>
+
+            {% for category in categories %}
+                <a
+                    href="{{ list_url }}?category={{ category.name|urlencode }}{% if query %}&q={{ query|urlencode }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}{% if in_stock_only %}&in_stock=1{% endif %}{% if min_price %}&min_price={{ min_price|urlencode }}{% endif %}{% if max_price %}&max_price={{ max_price|urlencode }}{% endif %}"
+                    class="category-filter-link{% if category_slug|lower == category.name|lower %} active{% endif %}"
+                >
+                    {{ category.name }}
+                </a>
+            {% endfor %}
+
+        </nav>
+
+        <div class="filter-secondary">
+
+            <form method="get" action="{{ list_url }}" class="sort-form">
+
+                {% if category_slug %}
+                    <input type="hidden" name="category" value="{{ category_slug }}">
+                {% endif %}
+
+                {% if query %}
+                    <input type="hidden" name="q" value="{{ query }}">
+                {% endif %}
+
+                {% if min_price %}
+                    <input type="hidden" name="min_price" value="{{ min_price }}">
+                {% endif %}
+
+                {% if max_price %}
+                    <input type="hidden" name="max_price" value="{{ max_price }}">
+                {% endif %}
+
+                <select
+                    name="sort"
+                    aria-label="Sort products"
+                    onchange="this.form.submit()"
+                >
+                    <option value="">Sort: Featured</option>
+                    <option value="price_asc" {% if sort == "price_asc" %}selected{% endif %}>Price: Low to High</option>
+                    <option value="price_desc" {% if sort == "price_desc" %}selected{% endif %}>Price: High to Low</option>
+                    <option value="newest" {% if sort == "newest" %}selected{% endif %}>Newest</option>
+                    <option value="name_asc" {% if sort == "name_asc" %}selected{% endif %}>Name: A–Z</option>
+                </select>
+
+                <label class="filter-checkbox">
+                    <input
+                        type="checkbox"
+                        name="in_stock"
+                        value="1"
+                        {% if in_stock_only %}checked{% endif %}
+                        onchange="this.form.submit()"
+                    >
+                    In stock only
+                </label>
+
+            </form>
+
+            <form method="get" action="{{ list_url }}" class="price-filter-form">
+
+                {% if category_slug %}
+                    <input type="hidden" name="category" value="{{ category_slug }}">
+                {% endif %}
+
+                {% if query %}
+                    <input type="hidden" name="q" value="{{ query }}">
+                {% endif %}
+
+                {% if sort %}
+                    <input type="hidden" name="sort" value="{{ sort }}">
+                {% endif %}
+
+                {% if in_stock_only %}
+                    <input type="hidden" name="in_stock" value="1">
+                {% endif %}
+
+                <input
+                    type="number"
+                    name="min_price"
+                    value="{{ min_price }}"
+                    placeholder="Min UGX"
+                    aria-label="Minimum price in UGX"
+                >
+
+                <input
+                    type="number"
+                    name="max_price"
+                    value="{{ max_price }}"
+                    placeholder="Max UGX"
+                    aria-label="Maximum price in UGX"
+                >
+
+                <button type="submit">
+                    Go
+                </button>
+
+            </form>
+
+        </div>
+
+    </div>
+</div>

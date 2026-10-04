@@ -1,0 +1,49 @@
+{% load store_extras %}
+{% comment %}
+    One product card, used by the homepage and the collection page.
+    The image, the name and the price all link to the product page.
+    The image link is hidden from keyboards and screen readers because the
+    name/price link beside it goes to the same place (one tab stop per bag).
+{% endcomment %}
+<article class="product{% if bag.stock < 1 %} product-out-of-stock{% endif %}">
+
+    <a
+        href="{% url 'product_detail' bag.id %}"
+        class="product-image"
+        tabindex="-1"
+        aria-hidden="true"
+    >
+
+        {% if bag.stock < 1 %}
+            <span class="sold-out-badge">OUT OF STOCK</span>
+        {% endif %}
+
+        {% with first_image=bag.images.first %}
+            {% if first_image %}
+                <img
+                    src="{{ first_image.image.url }}"
+                    alt="{{ bag.name }}"
+                    {% if forloop.counter > 4 %}loading="lazy"{% endif %}
+                >
+            {% else %}
+                <div class="image-placeholder">
+                    Image unavailable
+                </div>
+            {% endif %}
+        {% endwith %}
+
+    </a>
+
+    <a href="{% url 'product_detail' bag.id %}" class="product-meta">
+
+        <h3 class="product-title">
+            {{ bag.name }}{% if bag.stock < 1 %}<span class="visually-hidden"> (out of stock)</span>{% endif %}
+        </h3>
+
+        <p class="product-price">
+            UGX {{ bag.price|ugx_format }}
+        </p>
+
+    </a>
+
+</article>

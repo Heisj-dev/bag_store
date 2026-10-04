@@ -4436,3 +4436,170 @@ button.google-login-button {
         padding: 90px 0 45px;
     }
 }
+
+
+/* =========================================================
+   COLLECTION: product links, out-of-stock, pagination
+   ========================================================= */
+
+/* Hidden visually but still read by screen readers */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* The name and price are one link to the product page */
+a.product-meta {
+    display: block;
+    color: inherit;
+}
+
+a.product-meta .product-title,
+a.product-meta .product-price {
+    transition: opacity 180ms ease;
+}
+
+a.product-meta:hover .product-title,
+a.product-meta:hover .product-price {
+    opacity: 0.6;
+}
+
+/* Related products: out-of-stock note */
+.related-product-stock {
+    margin: 3px 0 0;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+}
+
+/* PAGINATION — shown only when there are more than 12 bags */
+
+.product-grid.product-grid-paged {
+    padding-bottom: var(--s-6);
+}
+
+.pagination {
+    width: min(var(--max), calc(100% - (var(--gutter) * 2)));
+    margin: 0 auto;
+    padding: var(--s-5) 0 var(--s-9);
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--s-4);
+
+    border-top: 1px solid var(--line);
+}
+
+.pagination-pages {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    list-style: none;
+}
+
+.pagination-link,
+.pagination-gap {
+    min-width: 40px;
+    height: 40px;
+    padding: 0 6px;
+
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    font-size: var(--fs-label);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-2);
+}
+
+.pagination-gap {
+    min-width: 24px;
+    color: var(--ink-3);
+}
+
+.pagination-link {
+    border-bottom: 1px solid transparent;
+    transition: color 160ms ease, border-color 160ms ease;
+}
+
+a.pagination-link:hover {
+    color: var(--ink);
+    border-bottom-color: var(--line-strong);
+}
+
+.pagination-link.is-current {
+    color: var(--ink);
+    font-weight: 700;
+    border-bottom-color: var(--ink);
+}
+
+.pagination-step {
+    min-width: 44px;
+    height: 40px;
+    padding-bottom: 4px;    /* optically centres the small capitals on the page numbers */
+
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    font-size: var(--fs-meta);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink);
+
+    transition: opacity 180ms ease;
+}
+
+a.pagination-step:hover {
+    opacity: 0.55;
+}
+
+.pagination-disabled {
+    color: var(--ink-3);
+    cursor: default;
+}
+
+@media (max-width: 599px) {
+
+    /*
+     * Phones: the page bar must stay on ONE line down to 320px wide, even in
+     * its longest forms ("Prev 1 ... 15 16 17 ... 32 Next" and
+     * "Prev 1 2 3 4 5 ... 32 Next"). These sizes keep it under about 280px.
+     */
+
+    .pagination {
+        gap: var(--s-1);
+    }
+
+    .pagination-pages {
+        gap: 0;
+    }
+
+    .pagination-link {
+        min-width: 30px;
+        padding: 0 4px;
+    }
+
+    .pagination-gap {
+        min-width: 18px;
+        padding: 0;
+    }
+
+    .pagination-step {
+        min-width: 36px;
+        letter-spacing: 0.06em;
+    }
+}

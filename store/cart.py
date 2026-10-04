@@ -16,22 +16,27 @@ class Cart:
 
 
     def add(self, bag, quantity=1):
+        """
+        Add a bag to the cart, never beyond the stock available.
+        Returns True if it was added, False if it was refused.
+        """
 
         bag_id = str(bag.id)
 
-        if bag_id not in self.cart:
-            self.cart[bag_id] = 0
+        new_quantity = self.cart.get(bag_id, 0) + quantity
 
-        new_quantity = self.cart[bag_id] + quantity
+        if new_quantity > bag.stock:
+            # Nothing is stored, so an out-of-stock bag never leaves an
+            # empty entry behind in the cart.
+            return False
 
-        if new_quantity <= bag.stock:
+        self.cart[bag_id] = new_quantity
+        self.session.modified = True
 
-            self.cart[bag_id] = new_quantity
-
-            self.session.modified = True
-
+        return True
 
     def increase(self, bag):
+        """One more of a bag already in the cart. False if stock ran out."""
 
         bag_id = str(bag.id)
 
@@ -40,11 +45,11 @@ class Cart:
             current_quantity = self.cart[bag_id]
 
             if current_quantity < bag.stock:
-
                 self.cart[bag_id] += 1
-
                 self.session.modified = True
+                return True
 
+        return False
 
     def decrease(self, bag):
 

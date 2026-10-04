@@ -1,7 +1,7 @@
 {% extends 'store/base.html' %}
 {% load store_extras %}
 
-{% block title %}Bags &amp; Beyond — {% if query %}Results for “{{ query }}”{% elif category_slug %}{{ category_slug|title }}{% elif is_curated %}Featured{% else %}All Bags{% endif %}{% if page_obj.number > 1 %} - Page {{ page_obj.number }}{% endif %}{% endblock %}
+{% block title %}Bags &amp; Beyond — {% if query %}Results for “{{ query }}”{% elif category_slug %}{{ category_slug|title }}{% else %}All Bags{% endif %}{% if page_obj.number > 1 %} — Page {{ page_obj.number }}{% endif %}{% endblock %}
 
 {% block content %}
 
@@ -14,26 +14,16 @@
             <h1 class="shop-title">“{{ query }}”</h1>
         {% elif category_slug %}
             <h1 class="shop-title">{{ category_slug|title }}</h1>
-        {% elif is_curated %}
-            <h1 class="shop-title">Featured</h1>
         {% else %}
             <h1 class="shop-title">All Bags</h1>
         {% endif %}
 
-        {% if is_curated %}
-            {% if page_obj.has_next %}
-                <p class="shop-meta">
-                    <a href="?page=2" class="text-link">View more bags</a>
-                </p>
+        <p class="shop-meta">
+            <span>{{ result_count }} bag{{ result_count|pluralize }}</span>
+            {% if query or category_slug or in_stock_only or min_price or max_price or sort %}
+                <a href="{% url 'collection' %}" class="text-link">Clear filters</a>
             {% endif %}
-        {% else %}
-            <p class="shop-meta">
-                <span>{{ result_count }} bag{{ result_count|pluralize }}</span>
-                {% if query or category_slug or sort or in_stock_only or min_price or max_price %}
-                    <a href="{% url 'index' %}" class="text-link">Clear filters</a>
-                {% endif %}
-            </p>
-        {% endif %}
+        </p>
 
     </div>
 
@@ -57,11 +47,11 @@
 
 
 <!-- FILTER PANEL -->
-{% url 'index' as home_url %}
-{% include "store/_filter_panel.html" with list_url=home_url %}
+{% url 'collection' as collection_url %}
+{% include "store/_filter_panel.html" with list_url=collection_url %}
 
 
-<!-- PRODUCT GRID -->
+<!-- PRODUCT GRID + PAGINATION -->
 {% if bags %}
 
     <div class="product-grid{% if page_obj.has_other_pages %} product-grid-paged{% endif %}">
@@ -69,6 +59,8 @@
             {% include "store/_product_card.html" %}
         {% endfor %}
     </div>
+
+    {% include "store/_pagination.html" %}
 
 {% else %}
 
@@ -84,23 +76,17 @@
                 There are no products in
                 {{ category_slug|title }}
                 that match.
-            {% elif not is_curated %}
-                No bags match those filters.
             {% else %}
-                No bags have been chosen for the homepage yet.
+                No bags match those filters.
             {% endif %}
         </p>
 
-        <a href="{% if is_curated and page_obj.has_next %}?page=2{% else %}{% url 'index' %}{% endif %}" class="button-secondary">
+        <a href="{% url 'collection' %}" class="button-secondary">
             View all bags
         </a>
 
     </div>
 
 {% endif %}
-
-
-<!-- PAGE LINKS -->
-{% include "store/_pagination.html" %}
 
 {% endblock %}
