@@ -251,6 +251,50 @@ body.nav-open {
     width: min(680px, calc(100% - (var(--gutter) * 2)));
 }
 
+/* Policy pages (Privacy Policy): plain text with section headings */
+.policy-updated {
+    margin-top: var(--s-2);
+    font-size: var(--fs-small);
+    color: var(--ink-2);
+}
+
+.policy-page h2 {
+    margin-top: var(--s-6);
+    margin-bottom: var(--s-2);
+    font-size: var(--fs-h3);
+    font-weight: 700;
+    line-height: var(--lh-tight);
+    letter-spacing: -0.01em;
+}
+
+.policy-page p,
+.policy-page li {
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+}
+
+.policy-page p + p {
+    margin-top: var(--s-3);
+}
+
+.policy-page ul {
+    margin: var(--s-2) 0 var(--s-3);
+    padding-left: var(--s-5);
+    list-style: disc;
+}
+
+.policy-page li + li {
+    margin-top: var(--s-2);
+}
+
+.policy-page p a:not(.text-link) {
+    border-bottom: 1px solid var(--line-strong);
+}
+
+.policy-back {
+    margin-top: var(--s-6);
+}
+
 
 /* =========================================================
    03  BUTTONS

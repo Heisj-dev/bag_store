@@ -16,8 +16,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
     <meta name="theme-color" content="#f2f1ed">
 
-    <link rel="icon" href="/favicon.ico?v=2">
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
+    <link rel="icon" href="{% url 'favicon' %}">
+    <link rel="apple-touch-icon" href="{% url 'apple_touch_icon' %}">
 
     <link rel="stylesheet" href="{% static 'store/css/style.css' %}">
 
@@ -444,6 +444,10 @@
                         Terms
                     </button>
 
+                    <a href="{% url 'privacy' %}">
+                        Privacy Policy
+                    </a>
+
                     <button
                         type="button"
                         data-modal-target="contact-modal"
@@ -468,7 +472,7 @@
                 >
 
                     <a
-                        href="https://x.com/heisjossen"
+                        href="https://x.com/bagsnbeyond256/"
                         class="social-icon"
                         aria-label="X (Twitter)"
                         target="_blank"
@@ -498,13 +502,8 @@
                         </svg>
                     </a>
 
-
-                    {% comment %}
-
-                    Instagram is hidden until there is a real profile URL.
-
                     <a
-                        href="#"
+                        href="https//www.instagram.com/bagsandbeyond256/"
                         class="social-icon"
                         aria-label="Instagram"
                         target="_blank"
@@ -539,8 +538,6 @@
                             ></circle>
                         </svg>
                     </a>
-
-                    {% endcomment %}
 
 
                     <a

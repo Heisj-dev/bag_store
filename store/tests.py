@@ -1,9 +1,14 @@
 from django.apps import apps as django_apps
+from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.core.mail import EmailMultiAlternatives, send_mail
 from django.http import Http404
-from django.test import TestCase, Client, RequestFactory
+from django.test import TestCase, Client, RequestFactory, override_settings
+from django.urls import reverse
 from django.contrib.auth.models import User
 from django.contrib.sites.models import Site
 from . import views
+from .signals import restore_stock_once
 from .models import Category, Bag, Order, OrderItem
 from django.core import mail
 from django.db import connection
@@ -14,6 +19,7 @@ import io
 import json
 import re
 import time
+import uuid
 from contextlib import redirect_stdout
 from datetime import timedelta
 from types import SimpleNamespace
@@ -1938,3 +1944,570 @@ class FaviconTests(TestCase):
         for name in ("nope.png", "../models.py"):
             with self.assertRaises(Http404):
                 views.site_icon(request, name)
+
+
+# ===========================================================================
+# LAUNCH PREP: CANCELLATION STOCK, ORDER EMAILS, PRIVACY PAGE, EMAIL OVER
+# HTTPS (BREVO) AND THE PRODUCTION SETTINGS
+# ===========================================================================
+
+TEST_PASSWORD = "a-strong-test-password-99"
+
+
+def make_order(user, items=(), status="PENDING", **extra):
+    """
+    An order for `user` holding `items`, a list of (bag, quantity).
+    Creating an order sends no email, whatever its status.
+    """
+    order = Order.objects.create(
+        user=user,
+        order_number=uuid.uuid4().hex[:12].upper(),
+        email=user.email,
+        full_name="Jane Doe",
+        phone="0700000000",
+        address="1 Market Street",
+        city="Kampala",
+        total=sum(bag.price * quantity for bag, quantity in items),
+        status=status,
+        **extra,
+    )
+    for bag, quantity in items:
+        OrderItem.objects.create(
+            order=order, bag=bag, product_name=bag.name,
+            price=bag.price, quantity=quantity,
+        )
+    return order
+
+
+def stock_of(bag):
+    bag.refresh_from_db()
+    return bag.stock
+
+
+class OrderCancellationStockTests(TestCase):
+    """Cancel an order -> bags back in stock (once) -> cancellation email."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="buyer@example.com", email="buyer@example.com", password=TEST_PASSWORD
+        )
+        # stock AFTER the customer ordered: 3 - 2 = 1 and 5 - 1 = 4
+        self.duffle = make_bag("Duffle", price=90000, stock=1)
+        self.tote = make_bag("Tote", price=40000, stock=4)
+        self.order = make_order(self.user, [(self.duffle, 2), (self.tote, 1)])
+        mail.outbox.clear()
+
+    def cancel(self, order=None):
+        order = order or self.order
+        order.status = "CANCELLED"
+        order.save()
+
+    def test_cancelling_puts_every_bag_back_in_stock(self):
+        self.cancel()
+        self.assertEqual(stock_of(self.duffle), 3)
+        self.assertEqual(stock_of(self.tote), 5)
+        self.order.refresh_from_db()
+        self.assertTrue(self.order.stock_restored)               # marked as processed
+
+    def test_cancelling_the_same_order_again_does_not_double_the_stock(self):
+        self.cancel()
+        self.cancel()                                            # CANCEL again
+        self.order.save()                                        # and saved once more
+        self.assertEqual(stock_of(self.duffle), 3)
+        self.assertEqual(stock_of(self.tote), 5)
+
+    def test_a_stale_copy_of_the_order_cannot_restore_the_stock_twice(self):
+        # two people cancel at the same moment: both loaded the order as PENDING
+        first = Order.objects.get(pk=self.order.pk)
+        second = Order.objects.get(pk=self.order.pk)
+
+        self.assertTrue(restore_stock_once(first))
+        self.assertFalse(restore_stock_once(second))             # the flag in the database says done
+
+        self.assertEqual(stock_of(self.duffle), 3)
+        self.assertEqual(stock_of(self.tote), 5)
+
+    def test_the_cancellation_email_is_sent_once(self):
+        self.cancel()
+        self.cancel()
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].subject, f"ORDER CANCELLED \u2014 #{self.order.order_number}")
+        self.assertEqual(mail.outbox[0].to, ["buyer@example.com"])
+
+    def test_every_status_can_be_cancelled_and_restores_the_stock(self):
+        for status in ("PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED"):
+            with self.subTest(status=status):
+                bag = make_bag(f"Bag {status}", stock=0)
+                order = make_order(self.user, [(bag, 2)], status=status)
+                mail.outbox.clear()
+
+                self.cancel(order)
+
+                self.assertEqual(stock_of(bag), 2)
+                self.assertEqual(len(mail.outbox), 1)
+
+    def test_a_bag_that_was_deleted_is_skipped(self):
+        self.tote.delete()                                       # the item keeps its name, loses its bag
+        self.cancel()
+        self.assertEqual(stock_of(self.duffle), 3)               # the others still come back
+        self.order.refresh_from_db()
+        self.assertTrue(self.order.stock_restored)
+
+    def test_an_order_cancelled_before_this_fix_is_never_restored_again(self):
+        old = make_order(self.user, [(self.duffle, 2)], status="CANCELLED", stock_restored=True)
+        self.cancel(old)
+        self.assertEqual(stock_of(self.duffle), 1)               # unchanged
+
+    def test_a_cancelled_order_cannot_be_reopened(self):
+        self.cancel()
+        self.order.status = "PENDING"
+        with self.assertRaises(ValidationError):
+            self.order.clean()
+
+        # nothing to complain about while it stays cancelled, or for other orders
+        self.order.status = "CANCELLED"
+        self.order.clean()
+        other = make_order(self.user, [(self.tote, 1)])
+        other.status = "CONFIRMED"
+        other.clean()
+
+
+class OrderCancellationAdminTests(TestCase):
+    """The same rules when the shop owner works from the Django admin."""
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser(
+            username="boss", email="boss@example.com", password=TEST_PASSWORD
+        )
+        self.client.force_login(self.admin)
+        self.customer = User.objects.create_user(
+            username="buyer@example.com", email="buyer@example.com", password=TEST_PASSWORD
+        )
+        self.bag = make_bag("Duffle", price=90000, stock=1)
+        self.order = make_order(self.customer, [(self.bag, 2)])
+        mail.outbox.clear()
+
+    def run_action(self, action, *orders):
+        return self.client.post(
+            "/admin/store/order/",
+            {"action": action, "_selected_action": [order.pk for order in orders]},
+            follow=True,
+        )
+
+    def test_the_cancel_action_restores_stock_once_and_emails_once(self):
+        self.run_action("mark_as_cancelled", self.order)
+        self.run_action("mark_as_cancelled", self.order)         # selected again
+        self.assertEqual(stock_of(self.bag), 3)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_the_other_actions_leave_a_cancelled_order_alone(self):
+        self.run_action("mark_as_cancelled", self.order)
+        mail.outbox.clear()
+
+        for action in ("mark_as_confirmed", "mark_as_processing", "mark_as_shipped", "mark_as_delivered"):
+            with self.subTest(action=action):
+                response = self.run_action(action, self.order)
+                self.order.refresh_from_db()
+                self.assertEqual(self.order.status, "CANCELLED")
+                self.assertContains(response, "cancelled order(s) were left as they are")
+
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertEqual(stock_of(self.bag), 3)
+
+    def test_the_status_list_cannot_reopen_a_cancelled_order(self):
+        self.run_action("mark_as_cancelled", self.order)
+        mail.outbox.clear()
+
+        response = self.client.post(
+            "/admin/store/order/",
+            {
+                "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "1",
+                "form-MIN_NUM_FORMS": "0", "form-MAX_NUM_FORMS": "1000",
+                "form-0-id": str(self.order.pk),
+                "form-0-status": "PENDING",
+                "form-0-payment_status": "PENDING",
+                "_save": "Save",
+            },
+        )
+
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, "CANCELLED")
+        self.assertContains(response, "A cancelled order cannot be reopened")
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_the_stock_flag_is_shown_but_cannot_be_edited(self):
+        response = self.client.get(f"/admin/store/order/{self.order.pk}/change/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("stock_restored", response.context["adminform"].form.fields)
+        self.assertContains(response, "Stock restored")
+
+
+class OrderStatusEmailTests(TestCase):
+    """Each status change sends its own email, once. Processing sends none."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="buyer@example.com", email="buyer@example.com", password=TEST_PASSWORD
+        )
+        self.bag = make_bag("Duffle", price=90000, stock=5)
+        self.order = make_order(self.user, [(self.bag, 1)])
+        mail.outbox.clear()
+
+    def move_to(self, status):
+        self.order.status = status
+        self.order.save()
+
+    def subjects(self):
+        return [message.subject for message in mail.outbox]
+
+    def number(self):
+        return self.order.order_number
+
+    def test_pending_to_confirmed(self):
+        self.move_to("CONFIRMED")
+        self.assertEqual(self.subjects(), [f"ORDER CONFIRMED \u2014 #{self.number()}"])
+        self.assertEqual(mail.outbox[0].to, ["buyer@example.com"])
+        self.assertIn(self.number(), mail.outbox[0].body)
+        self.assertIn("Hi Jane Doe", mail.outbox[0].body)
+
+    def test_confirmed_to_processing_sends_no_email(self):
+        self.move_to("CONFIRMED")
+        mail.outbox.clear()
+        self.move_to("PROCESSING")
+        self.assertEqual(mail.outbox, [])
+
+    def test_processing_to_shipped(self):
+        self.move_to("PROCESSING")
+        mail.outbox.clear()
+        self.move_to("SHIPPED")
+        self.assertEqual(self.subjects(), [f"YOUR ORDER IS ON THE WAY \u2014 #{self.number()}"])
+
+    def test_shipped_to_delivered(self):
+        self.move_to("SHIPPED")
+        mail.outbox.clear()
+        self.move_to("DELIVERED")
+        self.assertEqual(self.subjects(), [f"DELIVERED \u2014 ORDER #{self.number()}"])
+
+    def test_anything_to_cancelled(self):
+        for status in ("PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED"):
+            with self.subTest(status=status):
+                order = make_order(self.user, [(self.bag, 1)], status=status)
+                mail.outbox.clear()
+                order.status = "CANCELLED"
+                order.save()
+                self.assertEqual(
+                    [m.subject for m in mail.outbox],
+                    [f"ORDER CANCELLED \u2014 #{order.order_number}"],
+                )
+
+    def test_a_whole_order_sends_exactly_one_email_per_step(self):
+        for status in ("CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED"):
+            self.move_to(status)
+        self.assertEqual(
+            self.subjects(),
+            [
+                f"ORDER CONFIRMED \u2014 #{self.number()}",
+                f"YOUR ORDER IS ON THE WAY \u2014 #{self.number()}",
+                f"DELIVERED \u2014 ORDER #{self.number()}",
+            ],
+        )
+
+    def test_saving_again_never_sends_a_second_email(self):
+        self.move_to("CONFIRMED")
+        self.order.save()                                        # same status, saved again
+        self.order.notes = "Leave with the guard"
+        self.order.save()                                        # another field changed
+        self.move_to("CONFIRMED")                                # "changed" to what it already is
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_a_stale_copy_saved_later_sends_nothing_more(self):
+        stale = Order.objects.get(pk=self.order.pk)              # loaded while PENDING
+        self.move_to("CONFIRMED")
+        self.move_to("PROCESSING")
+        mail.outbox.clear()
+
+        stale.status = "PROCESSING"                              # already PROCESSING in the database
+        stale.save()
+
+        self.assertEqual(mail.outbox, [])
+
+    def test_the_admin_actions_send_each_email_once(self):
+        admin = User.objects.create_superuser(
+            username="boss", email="boss@example.com", password=TEST_PASSWORD
+        )
+        self.client.force_login(admin)
+
+        for action in ("mark_as_confirmed", "mark_as_confirmed", "mark_as_processing",
+                       "mark_as_shipped", "mark_as_shipped", "mark_as_delivered"):
+            self.client.post(
+                "/admin/store/order/",
+                {"action": action, "_selected_action": [self.order.pk]},
+            )
+
+        self.assertEqual(
+            self.subjects(),
+            [
+                f"ORDER CONFIRMED \u2014 #{self.number()}",
+                f"YOUR ORDER IS ON THE WAY \u2014 #{self.number()}",
+                f"DELIVERED \u2014 ORDER #{self.number()}",
+            ],
+        )
+
+
+class CheckoutEmailTests(TestCase):
+    """A customer places an order: they get an email, the shop gets an alert, they see the confirmation."""
+
+    FORM = {
+        "name": "Jane Doe",
+        "email": "buyer@example.com",
+        "phone": "0700000000",
+        "address": "1 Market Street, Kololo",
+        "city": "Kampala",
+        "notes": "Call at the gate",
+    }
+
+    def setUp(self):
+        self.bag = make_bag("Duffle One", price=90000, stock=3)
+        self.user = User.objects.create_user(
+            username="buyer@example.com", email="buyer@example.com", password=TEST_PASSWORD
+        )
+        self.client.login(username="buyer@example.com", password=TEST_PASSWORD)
+        mail.outbox.clear()
+
+    def place_order(self, quantity=2, **changes):
+        session = self.client.session
+        session["cart"] = {str(self.bag.id): quantity}
+        session.save()
+        return self.client.post("/checkout/", {**self.FORM, **changes})
+
+    def test_customer_email_then_shop_alert_then_confirmation_page(self):
+        response = self.place_order()
+        order = Order.objects.get()
+
+        # two emails, one to the customer and one alert to the shop
+        self.assertEqual(len(mail.outbox), 2)
+        by_recipient = {message.to[0]: message for message in mail.outbox}
+
+        customer = by_recipient["buyer@example.com"]
+        self.assertEqual(customer.subject, f"WE'VE GOT YOUR ORDER \u2014 #{order.order_number}")
+        self.assertIn("Hi Jane Doe", customer.body)
+
+        alert = by_recipient[settings.ORDER_NOTIFICATION_EMAIL]
+        self.assertEqual(alert.to, [settings.ORDER_NOTIFICATION_EMAIL])
+        self.assertEqual(alert.subject, f"NEW BAG STORE ORDER \u2014 #{order.order_number}")
+        for expected in (
+            order.order_number, "Jane Doe", "buyer@example.com", "0700000000",
+            "1 Market Street, Kololo", "Kampala", "Call at the gate",
+            "Duffle One", "UGX 180,000", "COD",
+        ):
+            self.assertIn(expected, alert.body)
+
+        # then the order confirmation is displayed
+        confirmation = reverse("order_confirmation", kwargs={"order_number": order.order_number})
+        self.assertRedirects(response, confirmation)
+        page = self.client.get(confirmation)
+        self.assertContains(page, "Order confirmed.")
+        self.assertContains(page, order.order_number)
+        self.assertContains(page, "Duffle One")
+        self.assertContains(page, "UGX 180,000")
+
+    def test_the_shop_alert_goes_to_the_address_in_the_setting(self):
+        with self.settings(ORDER_NOTIFICATION_EMAIL="shop@example.com"):
+            self.place_order()
+        self.assertIn("shop@example.com", [message.to[0] for message in mail.outbox])
+
+    def test_a_failed_checkout_sends_no_email(self):
+        self.place_order(quantity=5)                             # only 3 in stock
+        self.assertEqual(Order.objects.count(), 0)
+        self.assertEqual(mail.outbox, [])
+
+    def test_an_incomplete_form_sends_no_email(self):
+        self.place_order(phone="")
+        self.assertEqual(Order.objects.count(), 0)
+        self.assertEqual(mail.outbox, [])
+
+    def test_a_cancelled_checkout_order_is_restocked_and_emailed_once(self):
+        self.place_order(quantity=2)
+        order = Order.objects.get()
+        self.assertEqual(stock_of(self.bag), 1)
+        mail.outbox.clear()
+
+        for _ in range(2):                                       # CANCEL, CANCEL again
+            order.status = "CANCELLED"
+            order.save()
+
+        self.assertEqual(stock_of(self.bag), 3)
+        self.assertEqual(len(mail.outbox), 1)
+
+    @override_settings(
+        EMAIL_BACKEND="store.brevo_backend.BrevoEmailBackend", BREVO_API_KEY="test-key"
+    )
+    def test_an_email_outage_never_blocks_an_order(self):
+        with mock.patch("store.brevo_backend.requests.post", side_effect=requests.ConnectionError("down")):
+            with self.assertLogs("store.brevo_backend", level="ERROR") as logged:
+                response = self.place_order()
+
+        order = Order.objects.get()                              # the order was still taken
+        self.assertRedirects(
+            response,
+            reverse("order_confirmation", kwargs={"order_number": order.order_number}),
+        )
+        self.assertEqual(len(logged.records), 2)                 # and both failures were logged
+
+
+class PrivacyPageTests(TestCase):
+    """The Privacy Policy is a real page, linked from the footer of every page."""
+
+    def test_the_page_is_public_and_has_the_policy(self):
+        response = self.client.get("/privacy/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '<h1 class="page-title">Privacy Policy</h1>')
+        self.assertEqual(page_title(response), "Privacy Policy \u2014 Bags &amp; Beyond")
+        for section in (
+            "What we collect", "How we use it", "Who sees it", "How long we keep it",
+            "Keeping it safe", "Your rights", "Contact us",
+        ):
+            self.assertContains(response, f"<h2>{section}</h2>")
+        self.assertContains(response, "Data Protection and Privacy Act, 2019")
+        self.assertContains(response, "Personal Data Protection Office")
+        self.assertContains(response, "https://wa.me/256789000053")
+
+    def test_the_policy_does_not_publish_a_personal_email_address(self):
+        html = self.client.get("/privacy/").content.decode()
+        self.assertNotIn("@gmail.com", html)
+        self.assertNotIn(settings.ORDER_NOTIFICATION_EMAIL, html)
+
+    def test_the_footer_of_every_kind_of_page_links_to_it(self):
+        bag = make_bag("Footer Bag", featured=1)
+        for url in ("/", "/?page=2", "/cart/", f"/bag/{bag.id}/", "/login/", "/privacy/"):
+            html = self.client.get(url, follow=True).content.decode()
+            self.assertRegex(html, r'<a href="/privacy/">\s*Privacy Policy\s*</a>', url)
+
+    def test_it_only_answers_get_and_head(self):
+        self.assertEqual(self.client.head("/privacy/").status_code, 200)
+        self.assertEqual(self.client.post("/privacy/").status_code, 405)
+
+
+@override_settings(
+    EMAIL_BACKEND="store.brevo_backend.BrevoEmailBackend",
+    BREVO_API_KEY="test-key",
+    DEFAULT_FROM_EMAIL="Bags & Beyond <orders@example.com>",
+    EMAIL_TIMEOUT=5,
+)
+class BrevoEmailBackendTests(TestCase):
+    """Email over HTTPS, for Render's free plan (which blocks the SMTP ports)."""
+
+    def ok(self):
+        return mock.Mock(status_code=201, text='{"messageId": "<1@brevo>"}')
+
+    def test_send_mail_goes_to_the_brevo_api(self):
+        with mock.patch("store.brevo_backend.requests.post", return_value=self.ok()) as post:
+            sent = send_mail("Hello", "Body text", None, ["buyer@example.com"])
+
+        self.assertEqual(sent, 1)
+        post.assert_called_once()
+        args, kwargs = post.call_args
+        self.assertEqual(args[0], "https://api.brevo.com/v3/smtp/email")
+        self.assertEqual(kwargs["headers"]["api-key"], "test-key")
+        self.assertEqual(kwargs["timeout"], 5)
+        self.assertEqual(
+            kwargs["json"],
+            {
+                "sender": {"name": "Bags & Beyond", "email": "orders@example.com"},
+                "to": [{"email": "buyer@example.com"}],
+                "subject": "Hello",
+                "textContent": "Body text",
+            },
+        )
+
+    def test_names_html_and_reply_to_are_passed_on(self):
+        message = EmailMultiAlternatives(
+            "Hi", "plain", "Shop <shop@example.com>", ["Jane Doe <jane@example.com>"],
+            reply_to=["help@example.com"],
+        )
+        message.attach_alternative("<p>html</p>", "text/html")
+
+        with mock.patch("store.brevo_backend.requests.post", return_value=self.ok()) as post:
+            message.send()
+
+        payload = post.call_args.kwargs["json"]
+        self.assertEqual(payload["sender"], {"name": "Shop", "email": "shop@example.com"})
+        self.assertEqual(payload["to"], [{"name": "Jane Doe", "email": "jane@example.com"}])
+        self.assertEqual(payload["replyTo"], {"email": "help@example.com"})
+        self.assertEqual(payload["textContent"], "plain")
+        self.assertEqual(payload["htmlContent"], "<p>html</p>")
+
+    def test_a_refusal_is_logged_and_skipped_when_fail_silently(self):
+        refused = mock.Mock(status_code=401, text='{"message": "Key not found"}')
+        with mock.patch("store.brevo_backend.requests.post", return_value=refused):
+            with self.assertLogs("store.brevo_backend", level="ERROR") as logged:
+                sent = send_mail("Hello", "Body", None, ["a@example.com"], fail_silently=True)
+
+        self.assertEqual(sent, 0)
+        self.assertIn("Brevo answered 401", "\n".join(logged.output))
+        self.assertNotIn("test-key", "\n".join(logged.output))       # the key never reaches the log
+
+    def test_a_refusal_raises_when_not_fail_silently(self):
+        refused = mock.Mock(status_code=400, text="bad sender")
+        with mock.patch("store.brevo_backend.requests.post", return_value=refused):
+            with self.assertLogs("store.brevo_backend", level="ERROR"):
+                with self.assertRaises(RuntimeError):
+                    send_mail("Hello", "Body", None, ["a@example.com"])
+
+    def test_a_network_error_is_handled_the_same_way(self):
+        with mock.patch("store.brevo_backend.requests.post", side_effect=requests.Timeout("slow")):
+            with self.assertLogs("store.brevo_backend", level="ERROR"):
+                self.assertEqual(
+                    send_mail("Hello", "Body", None, ["a@example.com"], fail_silently=True), 0
+                )
+
+    def test_no_api_key_is_logged_not_sent(self):
+        with self.settings(BREVO_API_KEY=""):
+            with mock.patch("store.brevo_backend.requests.post") as post:
+                with self.assertLogs("store.brevo_backend", level="ERROR") as logged:
+                    sent = send_mail("Hello", "Body", None, ["a@example.com"], fail_silently=True)
+
+        self.assertEqual(sent, 0)
+        post.assert_not_called()
+        self.assertIn("BREVO_API_KEY is not set", "\n".join(logged.output))
+
+    def test_a_message_without_recipients_is_skipped(self):
+        with mock.patch("store.brevo_backend.requests.post") as post:
+            self.assertEqual(send_mail("Hello", "Body", None, []), 0)
+        post.assert_not_called()
+
+    def test_every_status_email_of_the_shop_goes_through_it(self):
+        user = User.objects.create_user(username="b@example.com", email="b@example.com", password=TEST_PASSWORD)
+        order = make_order(user, [(make_bag("Any Bag"), 1)])
+
+        with mock.patch("store.brevo_backend.requests.post", return_value=self.ok()) as post:
+            for status in ("CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"):
+                order.status = status
+                order.save()
+
+        self.assertEqual(post.call_count, 4)
+        self.assertEqual(
+            [call.kwargs["json"]["to"] for call in post.call_args_list],
+            [[{"email": "b@example.com"}]] * 4,
+        )
+
+
+class ProductionSettingsTests(TestCase):
+    """Settings that matter once the shop is live."""
+
+    def test_a_kept_database_connection_is_checked_before_it_is_used(self):
+        database = settings.DATABASES["default"]
+        self.assertIs(database["CONN_HEALTH_CHECKS"], True)       # Neon drops idle connections
+        self.assertIs(database["DISABLE_SERVER_SIDE_CURSORS"], True)
+
+    def test_the_health_page_is_not_redirected_to_https_but_everything_else_is(self):
+        with self.settings(SECURE_SSL_REDIRECT=True):
+            fresh = Client()                                      # picks up the setting
+            self.assertEqual(fresh.get("/healthz/").status_code, 200)
+            redirected = fresh.get("/")
+            self.assertEqual(redirected.status_code, 301)
+            self.assertTrue(redirected["Location"].startswith("https://"))
+
+    def test_the_order_alert_address_is_a_setting(self):
+        self.assertTrue(settings.ORDER_NOTIFICATION_EMAIL)
+        self.assertIn("@", settings.ORDER_NOTIFICATION_EMAIL)

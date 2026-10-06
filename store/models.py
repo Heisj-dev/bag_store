@@ -198,6 +198,30 @@ class Order(models.Model):
         auto_now=True
     )
 
+    # Set when a cancelled order's bags have been put back in stock, so a
+    # cancellation can never put them back twice. Not editable by hand.
+    stock_restored = models.BooleanField(
+        default=False,
+        editable=False,
+    )
+
+    def clean(self):
+
+        # A cancelled order is final: its bags are already back in stock.
+        if self.pk:
+
+            previous = (
+                Order.objects.filter(pk=self.pk)
+                .values_list("status", flat=True)
+                .first()
+            )
+
+            if previous == "CANCELLED" and self.status != "CANCELLED":
+                raise ValidationError(
+                    "A cancelled order cannot be reopened: its bags are "
+                    "already back in stock. Create a new order instead."
+                )
+
     def __str__(self):
         return self.order_number
 

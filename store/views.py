@@ -2,6 +2,7 @@ import uuid
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
+from django.conf import settings
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.models import User
 from django.contrib.auth import login, authenticate
@@ -744,7 +745,7 @@ def checkout(request):
                 f"Payment status: {order.payment_status}\n"
             ),
             from_email=None,
-            recipient_list=["jossenndiwalana@gmail.com"],
+            recipient_list=[settings.ORDER_NOTIFICATION_EMAIL],
             fail_silently=True,
         )
 
@@ -802,6 +803,13 @@ def order_history(request):
 # ---------------------------------------------------------------------------
 # Keeping the site awake, and the site icons
 # ---------------------------------------------------------------------------
+
+@require_safe
+def privacy(request):
+    """The privacy policy: a real page, so it can be linked and shown to Google."""
+
+    return render(request, "store/privacy.html")
+
 
 @require_safe
 @never_cache

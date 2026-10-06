@@ -116,6 +116,54 @@ Things to know about option 1:
 
 ---
 
+## Deploying to Render (with Neon, Brevo and Google sign-in)
+
+**Files the deploy uses:** `build.sh` (installs, collects static files, migrates), `.python-version` (the Python version) and `.gitattributes` (keeps `build.sh` in Unix line endings, which Render needs). The repository must not contain `.env`, `venv/`, `db.sqlite3`, `db_backup.sqlite3`, `data_dump.json`, `media/`, `staticfiles/` or `__pycache__/` (`.gitignore` already skips them). Check with `git ls-files`; if one is listed, run `git rm -r --cached NAME` and commit.
+
+**1. Render service.** New > **Web Service** (not a Static Site), connect the GitHub repository, then set:
+
+- Build Command: `bash build.sh`
+- Start Command: `gunicorn bagstore_config.wsgi:application`
+- Health Check Path (optional): `/healthz/`
+- Do not set a `PYTHON_VERSION` variable: `.python-version` already chooses the Python version.
+
+**2. Environment variables** (Render > the service > Environment):
+
+| Name | Value |
+|---|---|
+| `SECRET_KEY` | a NEW long random value, never the one in your `.env` |
+| `DEBUG` | `False` |
+| `ALLOWED_HOSTS` | `bagsnbeyond.com,www.bagsnbeyond.com` (your own domain if different; the `onrender.com` address is added automatically) |
+| `CSRF_TRUSTED_ORIGINS` | `https://bagsnbeyond.com,https://www.bagsnbeyond.com` |
+| `DATABASE_URL` | the Neon connection string (the pooled one is fine) |
+| `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | from Cloudinary |
+| `BREVO_API_KEY` | a Brevo API key (it starts with `xkeysib-`). Sends email over HTTPS, so it works on Render's free plan |
+| `DEFAULT_FROM_EMAIL` | `Bags & Beyond <orders@bagsnbeyond.com>`, a sender verified in Brevo |
+| `ORDER_NOTIFICATION_EMAIL` | where the "NEW BAG STORE ORDER" alerts go |
+| `DB_CONN_MAX_AGE` | optional, seconds to keep a database connection (default 60) |
+
+Render's free plan blocks the SMTP ports (25, 465 and 587), so email over SMTP only works on a paid plan. If you are on a paid plan and prefer SMTP, leave `BREVO_API_KEY` out and set `EMAIL_HOST=smtp-relay.brevo.com`, `EMAIL_PORT=587`, `EMAIL_USE_TLS=True`, `EMAIL_HOST_USER` and `EMAIL_HOST_PASSWORD` instead.
+
+**3. Database (Neon).** Before the first deploy, make a backup: a Neon branch or a `pg_dump`. Never upload `db.sqlite3`. The build runs `migrate` on every deploy, which also applies the category list (`0012`) and the cancellation fix (`0013`) to the live data.
+
+**4. First admin account.** The free plan has no Shell, so add `DJANGO_SUPERUSER_USERNAME`, `DJANGO_SUPERUSER_EMAIL` and `DJANGO_SUPERUSER_PASSWORD` in Render for the first deploy only. `build.sh` creates the admin from them, and does nothing if it already exists. Delete the three variables afterwards. Then open `/admin/` and set up the categories, bags and photos, the homepage bags, the Google `SocialApp` and the `Sites` entry (change `example.com` to your domain).
+
+**5. Google sign-in.** In Google Cloud, under the OAuth client, add these Authorized redirect URIs (keep the local one for development):
+
+- `https://bagsnbeyond.com/accounts/google/login/callback/`
+- `https://www.bagsnbeyond.com/accounts/google/login/callback/`
+- `http://127.0.0.1:8000/accounts/google/login/callback/`
+
+Publish the consent screen (in testing mode only listed test users can sign in) and give it your privacy policy link, `https://bagsnbeyond.com/privacy/`. Then test: Login > Continue with Google > Google > Bags & Beyond > Account.
+
+**6. Email tests (after the first deploy).** Send real ones: password reset, new order (you get the alert, the customer gets "We've got your order"), order confirmed, order shipped, order delivered, order cancelled. Check the spam folder. If an email does not arrive, open Render > Logs: a failed send is written there as "Could not send the email ... through Brevo".
+
+**7. Domain (Namecheap).** Add `bagsnbeyond.com` and `www.bagsnbeyond.com` in Render > Settings > Custom Domains, then in Namecheap > Advanced DNS: remove any old `A` records for `@`, any `AAAA` records and any `www` CNAME or redirect, and add `A` record `@` -> `216.24.57.1` and `CNAME` record `www` -> `YOUR-SERVICE.onrender.com` (TTL 1 minute). Render then issues the HTTPS certificate and redirects HTTP to HTTPS.
+
+**Cancelled orders.** Cancelling an order puts its bags back in stock once (never twice) and emails the customer once. A cancelled order cannot be reopened: create a new order instead.
+
+---
+
 ## Installation & Setup
 
 ### 1. Clone the repository and enter the project folder

@@ -1,0 +1,5 @@
+# Render runs build.sh on Linux, which cannot read Windows line endings.
+# These keep the file in the repository with Unix line endings (LF), even if
+# your editor on Windows saves it with CRLF.
+*.sh text eol=lf
+.python-version text eol=lf

@@ -45,9 +45,11 @@ def show_customer_logout_message(sender, request, user, **kwargs):
 
 # Customer order-status emails. These fire whenever an Order is saved with a
 # new status, including changes made from Django admin.
+from django.db import transaction
+from django.db.models import F
 from django.db.models.signals import pre_save, post_save
 
-from .models import Order
+from .models import Bag, Order
 from .emails import (
     send_order_confirmed_email,
     send_order_shipped_email,
@@ -76,6 +78,38 @@ def _stash_previous_order_status(sender, instance, **kwargs):
         instance._previous_status = None
 
 
+def restore_stock_once(order):
+    """
+    Put the bags of a cancelled order back in stock, one time only.
+
+    The order is first marked as processed (stock_restored), and only the
+    caller that makes that change puts the bags back. So cancelling the same
+    order again, from the admin or anywhere else, never counts them twice.
+    Returns True when it put the bags back, False when it had been done.
+    """
+
+    with transaction.atomic():
+
+        claimed = Order.objects.filter(
+            pk=order.pk, stock_restored=False
+        ).update(stock_restored=True)
+
+        if not claimed:
+            return False
+
+        for item in order.items.all():
+
+            # An item whose bag was deleted has nothing to put back.
+            if item.bag_id is not None:
+                Bag.objects.filter(pk=item.bag_id).update(
+                    stock=F("stock") + item.quantity
+                )
+
+    order.stock_restored = True
+
+    return True
+
+
 @receiver(post_save, sender=Order)
 def _email_customer_on_status_change(sender, instance, created, **kwargs):
     if created:
@@ -86,8 +120,11 @@ def _email_customer_on_status_change(sender, instance, created, **kwargs):
     if previous_status == instance.status:
         return
 
+    # Order cancelled -> bags back in stock (once) -> cancellation email.
+    if instance.status == "CANCELLED":
+        restore_stock_once(instance)
+
     send_email = _STATUS_EMAILS.get(instance.status)
 
     if send_email:
         send_email(instance)
-

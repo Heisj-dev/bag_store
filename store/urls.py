@@ -28,6 +28,8 @@ urlpatterns = [
 
     path("login/", views.login_view, name="login"),
 
+    path("privacy/", views.privacy, name="privacy"),
+
     path("healthz/", views.healthz, name="healthz"),
 
     path(

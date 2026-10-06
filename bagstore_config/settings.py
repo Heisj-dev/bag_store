@@ -26,7 +26,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config("DEBUG", default=True, cast=bool)
+# With no DEBUG setting, debug is on only where a .env file exists (your own
+# computer) and off everywhere else (Render has no .env file). On Render, set
+# DEBUG=False anyway.
+DEBUG = config("DEBUG", default=(BASE_DIR / ".env").exists(), cast=bool)
 
 SECURE_SSL_REDIRECT = not DEBUG
 
@@ -42,6 +45,10 @@ SECURE_HSTS_PRELOAD = not DEBUG
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
+# /healthz/ answers "ok" and nothing else, so it may be asked over plain http
+# (Render's own health check, an uptime monitor) without being redirected.
+SECURE_REDIRECT_EXEMPT = [r"^healthz/$"]
+
 
 ALLOWED_HOSTS = config(
     "ALLOWED_HOSTS",
@@ -56,6 +63,14 @@ CSRF_TRUSTED_ORIGINS = [
     ).split(",")
     if origin.strip()
 ]
+
+# Render sets RENDER_EXTERNAL_HOSTNAME (for example your-app.onrender.com) on
+# every web service, so that address always works as well as your own domain.
+RENDER_EXTERNAL_HOSTNAME = config("RENDER_EXTERNAL_HOSTNAME", default="")
+
+if RENDER_EXTERNAL_HOSTNAME:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+    CSRF_TRUSTED_ORIGINS.append(f"https://{RENDER_EXTERNAL_HOSTNAME}")
 
 # Application definition
 
@@ -113,10 +128,16 @@ WSGI_APPLICATION = 'bagstore_config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
+# Neon puts an idle database to sleep and then drops its connections. So a
+# connection is kept for only 60 seconds (set DB_CONN_MAX_AGE to change that),
+# and Django checks that a kept connection is still alive before using it
+# (CONN_HEALTH_CHECKS), opening a new one if Neon closed it.
 DATABASES = {
     "default": dj_database_url.parse(
         config("DATABASE_URL"),
-        conn_max_age=600,
+        conn_max_age=config("DB_CONN_MAX_AGE", default=60, cast=int),
+        conn_health_checks=True,
+        disable_server_side_cursors=True,    # needed by Neon's pooled connection
     )
 }
 
@@ -178,18 +199,34 @@ DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
 
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
-EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+# Emails go out through Brevo, one of two ways:
+#   - BREVO_API_KEY set: over HTTPS. This works on Render's free plan, which
+#     blocks the SMTP ports.
+#   - otherwise: over SMTP, as before (needs a paid Render plan, or your own
+#     computer).
+BREVO_API_KEY = config("BREVO_API_KEY", default="")
 
-EMAIL_HOST = config("EMAIL_HOST")
-EMAIL_PORT = config("EMAIL_PORT", cast=int)
-EMAIL_USE_TLS = config("EMAIL_USE_TLS", cast=bool)
+if BREVO_API_KEY:
+    EMAIL_BACKEND = "store.brevo_backend.BrevoEmailBackend"
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 
-EMAIL_HOST_USER = config("EMAIL_HOST_USER")
-EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD")
+    EMAIL_HOST = config("EMAIL_HOST")
+    EMAIL_PORT = config("EMAIL_PORT", cast=int)
+    EMAIL_USE_TLS = config("EMAIL_USE_TLS", cast=bool)
+
+    EMAIL_HOST_USER = config("EMAIL_HOST_USER")
+    EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD")
 
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL")
 
-EMAIL_TIMEOUT = 5  
+EMAIL_TIMEOUT = 5
+
+# Where the "NEW BAG STORE ORDER" alert goes. Set ORDER_NOTIFICATION_EMAIL to
+# change it without touching the code.
+ORDER_NOTIFICATION_EMAIL = config(
+    "ORDER_NOTIFICATION_EMAIL", default="jossenndiwalana@gmail.com"
+)
 
 # Authentication
 LOGIN_URL = "/login/"

@@ -349,10 +349,25 @@ class OrderAdmin(admin.ModelAdmin):
         "mark_as_cancelled",
     ]
 
+    def open_orders(self, request, queryset):
+        """The orders an action may move on. A cancelled order is final."""
+
+        cancelled = queryset.filter(status="CANCELLED").count()
+
+        if cancelled:
+            self.message_user(
+                request,
+                f"{cancelled} cancelled order(s) were left as they are: "
+                "a cancelled order cannot be reopened.",
+                level=messages.WARNING,
+            )
+
+        return queryset.exclude(status="CANCELLED")
+
     @admin.action(description="Confirm selected orders")
     def mark_as_confirmed(self, request, queryset):
 
-        for order in queryset:
+        for order in self.open_orders(request, queryset):
             order.status = "CONFIRMED"
             order.save()
 
@@ -364,7 +379,7 @@ class OrderAdmin(admin.ModelAdmin):
     @admin.action(description="Mark selected orders as Processing")
     def mark_as_processing(self, request, queryset):
 
-        for order in queryset:
+        for order in self.open_orders(request, queryset):
             order.status = "PROCESSING"
             order.save()
 
@@ -376,7 +391,7 @@ class OrderAdmin(admin.ModelAdmin):
     @admin.action(description="Mark selected orders as Shipped")
     def mark_as_shipped(self, request, queryset):
 
-        for order in queryset:
+        for order in self.open_orders(request, queryset):
             order.status = "SHIPPED"
             order.save()
 
@@ -388,7 +403,7 @@ class OrderAdmin(admin.ModelAdmin):
     @admin.action(description="Mark selected orders as Delivered")
     def mark_as_delivered(self, request, queryset):
 
-        for order in queryset:
+        for order in self.open_orders(request, queryset):
             order.status = "DELIVERED"
             order.save()
 
@@ -433,6 +448,7 @@ class OrderAdmin(admin.ModelAdmin):
         "email",
         "total",
         "payment_method",
+        "stock_restored",
         "created_at",
         "updated_at",
     )
