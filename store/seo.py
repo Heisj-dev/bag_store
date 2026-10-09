@@ -24,7 +24,8 @@ PHONE = "+256789000053"
 
 SOCIAL_LINKS = [
     "https://www.tiktok.com/@bagsnbeyond256",
-    "https://x.com/heisjossen",
+    "https://x.com/bagsnbeyond256",
+    "https://www.instagram.com/bagsandbeyond256",
 ]
 
 HOME_TITLE = "Bags & Beyond | Handbags, Laptop Bags & Luggage in Kampala"
