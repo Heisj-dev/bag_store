@@ -246,6 +246,46 @@ body.nav-open {
     padding: var(--page-gap) 0 var(--s-9);
 }
 
+/* Breadcrumbs: Home / Gym Bags / Zara Tote */
+.breadcrumbs ol {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-1) var(--s-2);
+    margin: 0 0 var(--s-3);
+    padding: 0;
+    list-style: none;
+    font-size: var(--fs-small);
+    color: var(--ink-2);
+}
+
+.breadcrumbs li + li::before {
+    content: "/";
+    margin-right: var(--s-2);
+    color: var(--line-strong);
+}
+
+.breadcrumbs a:hover {
+    color: var(--ink);
+    text-decoration: underline;
+}
+
+.shop-crumbs {
+    width: min(var(--max), calc(100% - (var(--gutter) * 2)));
+    margin: var(--s-4) auto 0;
+}
+
+.shop-crumbs .breadcrumbs ol {
+    margin-bottom: 0;
+}
+
+.shop-intro {
+    max-width: 62ch;
+    margin-top: var(--s-2);
+    font-size: var(--fs-small);
+    line-height: var(--lh-body);
+    color: var(--ink-2);
+}
+
 /* Reading-width pages (My orders) */
 .collection.account-narrow {
     width: min(680px, calc(100% - (var(--gutter) * 2)));
@@ -777,6 +817,12 @@ input:-webkit-autofill:focus {
     .menu-toggle {
         margin-left: -10px;      /* keeps the glyph on the gutter edge: (48 - 28) / 2 */
     }
+}
+
+/* The cart icon is a supermarket trolley: a little wider than the other icons */
+.icon-button .trolley-icon {
+    width: 25px;
+    height: 25px;
 }
 
 /* Cart badge — pink, small, ringed so it sits cleanly on the icon */
@@ -3488,6 +3534,45 @@ input:-webkit-autofill:focus {
    14  MODALS — Shipping & returns, Terms, Contact
    One component, three uses.
    ========================================================= */
+
+/* The "Added to cart" popup uses the same component */
+.added-item {
+    display: flex;
+    align-items: center;
+    gap: var(--s-4);
+    margin-bottom: var(--s-5);
+}
+
+.added-image {
+    flex-shrink: 0;
+    width: 64px;
+    height: 80px;
+    object-fit: cover;
+    background: var(--surface, #f8f7f3);
+}
+
+.added-name {
+    font-size: var(--fs-lead);
+    font-weight: 700;
+    line-height: var(--lh-tight);
+}
+
+.added-meta {
+    margin-top: var(--s-1);
+    font-size: var(--fs-small);
+    color: var(--ink-2);
+}
+
+.added-actions {
+    display: grid;
+    gap: var(--s-3);
+}
+
+@media (min-width: 520px) {
+    .added-actions {
+        grid-template-columns: 1fr 1fr;
+    }
+}
 
 .modal-overlay {
     position: fixed;

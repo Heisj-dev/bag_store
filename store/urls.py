@@ -5,6 +5,12 @@ urlpatterns = [
     path("", views.index, name="index"),
     path("collection/", views.collection, name="collection"),
     path("bag/<int:bag_id>/", views.product_detail, name="product_detail"),
+    path(
+        "bag/<int:bag_id>/<slug:slug>/",
+        views.product_detail,
+        name="product_detail_slug",
+    ),
+    path("category/<slug:slug>/", views.category_page, name="category_page"),
 
     path("cart/add/<int:bag_id>/", views.cart_add, name="cart_add"),
     path("cart/", views.cart_detail, name="cart_detail"),
@@ -30,7 +36,17 @@ urlpatterns = [
 
     path("privacy/", views.privacy, name="privacy"),
 
+    path("v/", views.record_visit, name="record_visit"),
+
     path("healthz/", views.healthz, name="healthz"),
+
+    path("robots.txt", views.robots_txt, name="robots_txt"),
+
+    path("sitemap.xml", views.sitemap, name="sitemap"),
+
+    path("social-card.png", views.social_card, name="social_card"),
+
+    path("logo-<int:width>.webp", views.logo_image, name="logo_image"),
 
     path(
         "favicon.ico",

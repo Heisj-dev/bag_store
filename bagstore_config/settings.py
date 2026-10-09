@@ -94,7 +94,9 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    "store.middleware.CanonicalHostMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
+    "django.middleware.gzip.GZipMiddleware",
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -102,7 +104,22 @@ MIDDLEWARE = [
     'allauth.account.middleware.AccountMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    "store.middleware.PrivatePagesMiddleware",
 ]
+
+# The shop's one proper address, for search engines and shared links, for
+# example https://bagsnbeyond.com (leave empty and the address of each request
+# is used).
+SITE_URL = config("SITE_URL", default="").rstrip("/")
+
+# If set (for example bagsnbeyond.com), anyone arriving by another address, such
+# as your-app.onrender.com or www., is sent to this one for good.
+CANONICAL_HOST = config("CANONICAL_HOST", default="")
+
+# The codes Google Search Console and Bing Webmaster Tools give you to prove the
+# site is yours (the "content" of their meta tag).
+GOOGLE_SITE_VERIFICATION = config("GOOGLE_SITE_VERIFICATION", default="")
+BING_SITE_VERIFICATION = config("BING_SITE_VERIFICATION", default="")
 
 ROOT_URLCONF = 'bagstore_config.urls'
 

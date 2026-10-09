@@ -49,7 +49,7 @@ from django.db import transaction
 from django.db.models import F
 from django.db.models.signals import pre_save, post_save
 
-from .models import Bag, Order
+from .models import Bag, Category, Order
 from .emails import (
     send_order_confirmed_email,
     send_order_shipped_email,
@@ -128,3 +128,13 @@ def _email_customer_on_status_change(sender, instance, created, **kwargs):
 
     if send_email:
         send_email(instance)
+
+
+# The cached category list (see categories.py) is cleared when one changes.
+from django.db.models.signals import post_delete
+
+from .categories import forget_categories
+
+post_save.connect(forget_categories, sender=Category)
+post_delete.connect(forget_categories, sender=Category)
+

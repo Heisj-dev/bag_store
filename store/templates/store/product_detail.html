@@ -2,7 +2,7 @@
 {% load static %}
 {% load store_extras %}
 
-{% block title %}{{ bag.name }} — Bags &amp; Beyond{% endblock %}
+{% block title %}{{ seo.title }}{% endblock %}
 
 {% block content %}
 
@@ -20,7 +20,17 @@
                     <div class="gallery-track">
                         {% for bag_image in images %}
                             <div class="gallery-slide">
-                                <img src="{{ bag_image.image.url }}" alt="{{ bag.name }} — view {{ forloop.counter }}">
+                                {% with url=bag_image.image.url %}
+                                <img
+                                    src="{{ url|cld:960 }}"
+                                    {% cld_srcset url "480,720,960,1200" %}
+                                    sizes="(min-width: 900px) 50vw, 100vw"
+                                    alt="{{ bag.name }} — view {{ forloop.counter }}"
+                                    width="960"
+                                    height="1200"
+                                    {% if forloop.first %}fetchpriority="high"{% elif forloop.counter > 2 %}loading="lazy" decoding="async"{% endif %}
+                                >
+                                {% endwith %}
                             </div>
                         {% endfor %}
                     </div>
@@ -69,12 +79,14 @@
     <!-- PRODUCT DETAILS -->
     <div class="pdp-details">
 
+        {% include "store/_breadcrumbs.html" %}
+
         <h1 class="pdp-title">{{ bag.name }}</h1>
 
         <p class="pdp-price">UGX {{ bag.price|ugx_format }}</p>
 
         {% if bag.stock > 0 %}
-            <form action="{% url 'cart_add' bag.id %}" method="post">
+            <form action="{% url 'cart_add' bag.id %}" method="post" data-add-to-cart>
                 {% csrf_token %}
                 <button type="submit" class="pdp-add-to-cart">
                     Add to cart
@@ -136,17 +148,25 @@
 
         {% for related_bag in related_bags %}
 
-            <a href="{% url 'product_detail' related_bag.id %}"
+            <a href="{{ related_bag.get_absolute_url }}"
                class="related-product">
 
                 <div class="related-product-image">
                     {% with related_images=related_bag.images.all %}
                         {% if related_images %}
                             {% with first_image=related_images|first %}
+                                {% with url=first_image.image.url %}
                                 <img
-                                    src="{{ first_image.image.url }}"
+                                    src="{{ url|cld:360 }}"
+                                    {% cld_srcset url "240,360,480" %}
+                                    sizes="150px"
                                     alt="{{ related_bag.name }}"
+                                    width="150"
+                                    height="180"
+                                    loading="lazy"
+                                    decoding="async"
                                 >
+                                {% endwith %}
                             {% endwith %}
                         {% endif %}
                     {% endwith %}
@@ -172,4 +192,127 @@
 
 {% block extra_js %}
 <script src="{% static 'store/js/gallery.js' %}"></script>
+
+<script>
+/* =========================
+   ADD TO CART POPUP
+   Add to cart -> a popup asks: Continue shopping, or Go to cart.
+   If anything goes wrong the form is sent the normal way instead, and the
+   page explains (out of stock, the limit, ...), so nothing depends on this.
+   ========================= */
+(function () {
+
+    const form = document.querySelector("[data-add-to-cart]");
+    const popup = document.getElementById("added-modal");
+
+    if (!form || !popup || !window.fetch || typeof openModal !== "function") {
+        return;
+    }
+
+    const button = form.querySelector("button[type=submit]");
+
+    function updateHeaderCount(count) {
+
+        const link = document.querySelector(".cart-icon");
+
+        if (!link) {
+            return;
+        }
+
+        let badge = link.querySelector(".cart-badge");
+
+        if (!badge) {
+            badge = document.createElement("span");
+            badge.className = "cart-badge";
+            link.appendChild(badge);
+        }
+
+        badge.textContent = count;
+        link.setAttribute("aria-label", "Cart (" + count + ")");
+    }
+
+    function showPopup(data) {
+
+        updateHeaderCount(data.count);
+
+        document.getElementById("added-name").textContent = data.name;
+
+        document.getElementById("added-meta").textContent =
+            "UGX " + data.price + " \u00b7 " + data.count +
+            (data.count === 1 ? " item" : " items") + " in your cart";
+
+        const image = document.getElementById("added-image");
+
+        if (data.image) {
+            image.src = data.image;
+            image.alt = data.name;
+            image.hidden = false;
+        } else {
+            image.hidden = true;
+        }
+
+        openModal(popup);
+    }
+
+    form.addEventListener("submit", function (event) {
+
+        event.preventDefault();
+
+        button.disabled = true;
+
+        fetch(form.action, {
+            method: "POST",
+            body: new FormData(form),
+            credentials: "same-origin",
+            headers: {
+                "X-Requested-With": "XMLHttpRequest",
+                "Accept": "application/json"
+            }
+        })
+            .then(function (response) {
+                return response.json();
+            })
+            .then(function (data) {
+
+                if (!data.ok) {
+                    form.submit();
+                    return;
+                }
+
+                showPopup(data);
+                button.disabled = false;
+            })
+            .catch(function () {
+                form.submit();
+            });
+    });
+
+    // Continue shopping: back to the page the customer came from, when that
+    // was a page of this shop, otherwise to the shop's front page.
+    document.getElementById("added-continue").addEventListener("click", function () {
+
+        closeModal();
+
+        let cameFromShop = false;
+
+        try {
+            const from = new URL(document.referrer);
+
+            cameFromShop =
+                from.origin === location.origin &&
+                from.pathname !== location.pathname &&
+                !/^\/(cart|checkout)\b/.test(from.pathname);
+        } catch (error) {
+            cameFromShop = false;
+        }
+
+        if (cameFromShop) {
+            history.back();
+        } else {
+            location.href = "/";
+        }
+    });
+
+})();
+</script>
 {% endblock %}

@@ -8,7 +8,7 @@
 <article class="product{% if bag.stock < 1 %} product-out-of-stock{% endif %}">
 
     <a
-        href="{% url 'product_detail' bag.id %}"
+        href="{{ bag.get_absolute_url }}"
         class="product-image"
         tabindex="-1"
         aria-hidden="true"
@@ -20,11 +20,17 @@
 
         {% with first_image=bag.images.first %}
             {% if first_image %}
+                {% with url=first_image.image.url %}
                 <img
-                    src="{{ first_image.image.url }}"
+                    src="{{ url|cld:480 }}"
+                    {% cld_srcset url "240,360,480,720" %}
+                    sizes="(min-width: 900px) 24vw, 46vw"
                     alt="{{ bag.name }}"
-                    {% if forloop.counter > 4 %}loading="lazy"{% endif %}
+                    width="480"
+                    height="600"
+                    {% if forloop.counter > 4 %}loading="lazy" decoding="async"{% elif forloop.counter < 3 %}fetchpriority="high"{% endif %}
                 >
+                {% endwith %}
             {% else %}
                 <div class="image-placeholder">
                     Image unavailable
@@ -34,7 +40,7 @@
 
     </a>
 
-    <a href="{% url 'product_detail' bag.id %}" class="product-meta">
+    <a href="{{ bag.get_absolute_url }}" class="product-meta">
 
         <h3 class="product-title">
             {{ bag.name }}{% if bag.stock < 1 %}<span class="visually-hidden"> (out of stock)</span>{% endif %}

@@ -1,8 +1,10 @@
 from collections import Counter
 
 from django.contrib import admin, messages
+from django.template.response import TemplateResponse
 from django.db.models import Max
 
+from . import analytics
 from .models import (
     HOMEPAGE_BAG_LIMIT,
     Category,
@@ -10,6 +12,7 @@ from .models import (
     BagImage,
     Order,
     OrderItem,
+    VisitEvent,
 )
 
 
@@ -479,3 +482,40 @@ class OrderItemAdmin(admin.ModelAdmin):
         "price",
         "quantity",
     )
+
+
+@admin.register(VisitEvent)
+class VisitEventAdmin(admin.ModelAdmin):
+    """
+    "Visitor analytics": the whole page is a dashboard, not a list.
+
+    ?days=1, 7, 30, 90 picks the period, and ?days=0 means all time.
+    """
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def changelist_view(self, request, extra_context=None):
+
+        try:
+            days = int(request.GET.get("days", 30))
+        except ValueError:
+            days = 30
+
+        if days not in (0, 1, 7, 30, 90):
+            days = 30
+
+        context = {
+            **self.admin_site.each_context(request),
+            "title": "Visitor analytics",
+            "opts": self.model._meta,
+            "stats": analytics.build_dashboard(days),
+        }
+
+        return TemplateResponse(
+            request, "admin/store/visitevent/change_list.html", context
+        )
+

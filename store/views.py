@@ -1,6 +1,11 @@
+import functools
+import io
+import json
+import logging
 import uuid
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from urllib.parse import urlparse
 
 from django.conf import settings
 from django.shortcuts import render, get_object_or_404, redirect
@@ -17,17 +22,23 @@ from django.db.models import Q, prefetch_related_objects
 from django.core.paginator import Paginator
 from django.core.validators import validate_email
 from django.core.mail import send_mail
-from django.http import FileResponse, Http404, HttpResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.cache import cache_control, never_cache
-from django.views.decorators.http import require_safe
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST, require_safe
 
 from allauth.socialaccount.adapter import get_adapter as get_social_adapter
 
 from .models import HOMEPAGE_BAG_LIMIT, Bag, Category, Order, OrderItem
+from .templatetags.store_extras import cld, ugx_format
+from . import analytics, seo
 from .cart import Cart
+from .categories import all_categories
 from .emails import send_order_received_email
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Browsing the catalog: the homepage is Page 1 of the catalogue
@@ -227,7 +238,22 @@ def _catalogue_page(page_number):
     }
 
 
-def index(request):
+def _category_for_slug(slug):
+
+    for category in all_categories():
+        if category.slug == slug:
+            return category
+
+    raise Http404("No such category.")
+
+
+def category_page(request, slug):
+    """/category/gym-bags/ : the shop page of one category."""
+
+    return index(request, category=_category_for_slug(slug))
+
+
+def index(request, category=None):
     """
     The homepage, which is Page 1 of a paginated catalogue.
 
@@ -244,6 +270,9 @@ def index(request):
 
     filters = _read_filters(request)
 
+    if category is not None:
+        filters["category"] = category.name
+
     page_number = request.GET.get("page")
 
     if _filters_in_use(filters):
@@ -251,18 +280,42 @@ def index(request):
     else:
         shown = _catalogue_page(page_number)
 
+    # What the small script reports about this page (see base.html): a search,
+    # and how many bags it found; or a category.
+    visit = {}
+
+    if filters["query"]:
+        visit["term"] = filters["query"]
+        visit["results"] = shown["result_count"]
+
+    if filters["category"]:
+        visit["category"] = filters["category"]
+
     # The address-bar options without "page", so every page link keeps the
     # search, category, stock, price and sort the customer chose.
     params = request.GET.copy()
     params.pop("page", None)
+
+    seo_data = seo.listing_seo(
+        request,
+        filters=filters,
+        page=shown["page_obj"],
+        category=category,
+        landing=category is not None,
+        is_curated=shown["is_curated"],
+        result_count=shown["result_count"],
+    )
 
     return render(
         request,
         "store/index.html",
         {
             **shown,
+            "seo": seo_data,
             "querystring": params.urlencode(),
-            "categories": Category.objects.all(),
+            "categories": all_categories(),
+            "landing_category": category,
+            "visit": visit,
             **_filter_context(filters),
         }
     )
@@ -321,9 +374,23 @@ def build_order_tracker(status):
     return steps
 
 
-def product_detail(request, bag_id):
+def product_detail(request, bag_id, slug=None):
 
-    bag = get_object_or_404(Bag, id=bag_id)
+    bag = get_object_or_404(
+        Bag.objects.select_related("category").prefetch_related("images"),
+        id=bag_id,
+    )
+
+    # A bag has one proper address, /bag/12/zara-tote/. The short /bag/12/ and
+    # any other spelling lead there (and Google learns the proper one).
+    if request.path != bag.get_absolute_url():
+
+        query = request.META.get("QUERY_STRING", "")
+
+        return redirect(
+            f"{bag.get_absolute_url()}?{query}" if query else bag.get_absolute_url(),
+            permanent=True,
+        )
 
     related_bags = (
         Bag.objects.filter(category=bag.category)
@@ -339,6 +406,8 @@ def product_detail(request, bag_id):
         {
             "bag": bag,
             "related_bags": related_bags,
+            "seo": seo.product_seo(request, bag),
+            "visit": {"bag": bag.id},
         }
     )
 
@@ -413,7 +482,23 @@ def cart_add(request, bag_id):
 
     cart = Cart(request)
 
-    if cart.add(bag):
+    # The Add to cart button on a bag's page sends this request from
+    # JavaScript and shows the "Continue shopping / Go to cart" popup.
+    # Without JavaScript the old way still works: a message and a redirect.
+    from_popup = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+    added = cart.add(bag)
+
+    if added:
+        try:
+            analytics.record_cart_add(request, bag)
+        except Exception:
+            logger.exception("Could not record an Add to cart")
+
+    if from_popup:
+        return JsonResponse(_added_to_cart(cart, bag, added))
+
+    if added:
 
         messages.success(request, f"{bag.name.upper()} ADDED TO BAG")
 
@@ -429,10 +514,31 @@ def cart_add(request, bag_id):
             f"AND YOU ALREADY HAVE THEM IN YOUR BAG."
         )
 
-    return redirect(
-        "product_detail",
-        bag_id=bag.id
-    )
+    return redirect(bag.get_absolute_url())
+
+
+def _added_to_cart(cart, bag, added):
+    """What the popup needs to know after an Add to cart."""
+
+    items = list(cart)
+
+    answer = {
+        "ok": added,
+        "count": sum(item["quantity"] for item in items),
+        "name": bag.name,
+        "price": ugx_format(bag.price),
+        "quantity": next(
+            (item["quantity"] for item in items if item["bag"].id == bag.id), 0
+        ),
+        "image": "",
+    }
+
+    first_image = bag.images.first()
+
+    if first_image:
+        answer["image"] = cld(first_image.image.url, 160)
+
+    return answer
 
 def cart_detail(request):
 
@@ -808,7 +914,87 @@ def order_history(request):
 def privacy(request):
     """The privacy policy: a real page, so it can be linked and shown to Google."""
 
-    return render(request, "store/privacy.html")
+    return render(
+        request,
+        "store/privacy.html",
+        {
+            "seo": seo.simple_seo(
+                request,
+                title="Privacy Policy | Bags & Beyond",
+                description=(
+                    "How Bags & Beyond collects, uses and protects your personal "
+                    "information, and your rights under Uganda's Data Protection "
+                    "and Privacy Act."
+                ),
+                path=reverse("privacy"),
+            )
+        },
+    )
+
+
+@require_safe
+def robots_txt(request):
+    """/robots.txt : what search engines may visit, and where the sitemap is."""
+
+    return HttpResponse(
+        seo.robots_text(request), content_type="text/plain; charset=utf-8"
+    )
+
+
+@require_safe
+@cache_control(public=True, max_age=3600)
+def sitemap(request):
+    """/sitemap.xml : every page worth listing, for search engines."""
+
+    return HttpResponse(
+        seo.sitemap_xml(request), content_type="application/xml; charset=utf-8"
+    )
+
+
+@require_safe
+@cache_control(public=True, max_age=86400)
+def social_card(request):
+    """The picture shown when the shop's front page is shared (see seo.py)."""
+
+    return HttpResponse(seo.social_card_png(), content_type="image/png")
+
+
+def _same_site(request):
+    """Did this request come from a page of this shop?"""
+
+    for header in ("HTTP_ORIGIN", "HTTP_REFERER"):
+
+        sent = request.META.get(header)
+
+        if sent:
+            return urlparse(sent).netloc == request.get_host()
+
+    return False
+
+
+@csrf_exempt
+@require_POST
+def record_visit(request):
+    """
+    The small script at the end of every page reports each page view here (see
+    base.html). Only pages of this shop are believed, and nothing here can ever
+    stop a page from working: the answer is always "204, nothing to say".
+    """
+
+    try:
+        if _same_site(request):
+
+            try:
+                data = json.loads(request.body[:4096] or b"{}")
+            except ValueError:
+                data = None                       # not ours: ignore it, quietly
+
+            analytics.record_page_view(request, data)
+
+    except Exception:
+        logger.exception("Could not record a visit")
+
+    return HttpResponse(status=204)
 
 
 @require_safe
@@ -830,6 +1016,39 @@ ICON_FILES = {
     "favicon.ico": "image/x-icon",
     "apple-touch-icon.png": "image/png",
 }
+
+
+LOGO_WIDTHS = (320, 480, 640)
+
+
+@functools.lru_cache(maxsize=len(LOGO_WIDTHS))
+def _logo_webp(width):
+    """The logo as a small WebP, made once from the full-size PNG."""
+
+    from PIL import Image
+
+    logo = Image.open(ICON_FOLDER / "bag-store-logo.png").convert("RGBA")
+
+    logo = logo.resize(
+        (width, round(logo.height * width / logo.width)), Image.Resampling.LANCZOS
+    )
+
+    out = io.BytesIO()
+
+    logo.save(out, format="WEBP", quality=82, alpha_quality=90, method=6)
+
+    return out.getvalue()
+
+
+@require_safe
+@cache_control(public=True, max_age=60 * 60 * 24 * 7)
+def logo_image(request, width):
+    """/logo-640.webp : the header logo, about a tenth of the size of the PNG."""
+
+    if width not in LOGO_WIDTHS:
+        raise Http404("No such logo size.")
+
+    return HttpResponse(_logo_webp(width), content_type="image/webp")
 
 
 @require_safe

@@ -1,19 +1,26 @@
 from django.apps import apps as django_apps
+from django.contrib.sessions.models import Session
+from django.core.cache import cache
+from django.core.management import call_command
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.mail import EmailMultiAlternatives, send_mail
 from django.http import Http404
-from django.test import TestCase, Client, RequestFactory, override_settings
+from django.test import Client, RequestFactory, SimpleTestCase, override_settings
+from django.test import TestCase as DjangoTestCase
 from django.urls import reverse
 from django.contrib.auth.models import User
 from django.contrib.sites.models import Site
-from . import views
+from . import analytics, seo, views
+from .cart import Cart
 from .signals import restore_stock_once
-from .models import Category, Bag, Order, OrderItem
+from .models import Category, Bag, BagImage, Order, OrderItem, VisitEvent
+from .templatetags.store_extras import cld, cld_srcset
 from django.core import mail
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
+import gzip
 import importlib
 import io
 import json
@@ -22,14 +29,27 @@ import time
 import uuid
 from contextlib import redirect_stdout
 from datetime import timedelta
+from html import unescape
 from types import SimpleNamespace
 from unittest import mock
+from xml.etree import ElementTree
 from urllib.parse import parse_qs, unquote, urlparse
 
 import jwt
 import requests
 from allauth.socialaccount.models import SocialApp
 from PIL import Image
+
+
+class TestCase(DjangoTestCase):
+    """
+    Django's TestCase, but the cache starts empty in every test: the category
+    list and the per-minute visit limit are kept there.
+    """
+
+    def _pre_setup(self):
+        super()._pre_setup()
+        cache.clear()
 
 
 class BagModelTests(TestCase):
@@ -1071,17 +1091,20 @@ class HomepageIsPageOneTests(TestCase):
     def test_heading_and_title(self):
         one = self.client.get("/")
         self.assertContains(one, '<h1 class="shop-title">Featured</h1>')
-        self.assertEqual(page_title(one), "Bags &amp; Beyond \u2014 Featured")
+        self.assertEqual(
+            page_title(one), "Bags &amp; Beyond | Handbags, Laptop Bags &amp; Luggage in Kampala"
+        )
 
         two = self.client.get("/?page=2")
         self.assertContains(two, '<h1 class="shop-title">All Bags</h1>')
         self.assertNotContains(two, '<h1 class="shop-title">Featured</h1>')
-        self.assertEqual(page_title(two), "Bags &amp; Beyond \u2014 All Bags - Page 2")
+        self.assertEqual(page_title(two), "All Bags, Page 2 | Bags &amp; Beyond")
         self.assertEqual(
-            page_title(self.client.get("/?page=3")), "Bags &amp; Beyond \u2014 All Bags - Page 3"
+            page_title(self.client.get("/?page=3")), "All Bags, Page 3 | Bags &amp; Beyond"
         )
-        self.assertTrue(
-            page_title(self.client.get("/?category=Everyday&page=2")).endswith("Everyday - Page 2")
+        self.assertEqual(
+            page_title(self.client.get("/?category=Everyday&page=2")),
+            "Everyday, Page 2 | Bags &amp; Beyond",
         )
 
     def test_view_more_bags_is_on_page_one_only(self):
@@ -1444,7 +1467,7 @@ class CollectionRedirectTests(TestCase):
 
     def test_no_page_links_to_the_old_address(self):
         bag = make_bag("A Bag", featured=1)
-        for url in ("/", "/?page=2", "/?q=Bag", "/cart/", f"/bag/{bag.id}/"):
+        for url in ("/", "/?page=2", "/?q=Bag", "/cart/", bag.get_absolute_url()):
             self.assertNotContains(self.client.get(url), "/collection/", msg_prefix=url)
         self.assertContains(
             self.client.get("/cart/"), 'href="/" class="button-secondary">View collection</a>'
@@ -1460,7 +1483,7 @@ class ProductCardTests(TestCase):
 
     def check_card(self, url):
         html = self.client.get(url).content.decode()
-        link = f"/bag/{self.bag.id}/"
+        link = self.bag.get_absolute_url()
         self.assertGreaterEqual(html.count(f'href="{link}"'), 2, url)
         # the name and price sit inside a link to the product page
         meta = re.search(
@@ -1507,19 +1530,19 @@ class StockDisplayTests(TestCase):
         self.assertNotIn("OUT OF STOCK", html)
 
     def test_product_page_marks_it_and_disables_the_button(self):
-        response = self.client.get(f"/bag/{self.out.id}/")
+        response = self.client.get(self.out.get_absolute_url())
         self.assertContains(response, "OUT OF STOCK")
         self.assertContains(response, 'class="pdp-add-to-cart disabled" disabled')
         self.assertNotContains(response, "Sold out")
         self.assertNotContains(response, f"/cart/add/{self.out.id}/")
 
     def test_product_page_for_an_in_stock_bag_still_offers_add_to_cart(self):
-        response = self.client.get(f"/bag/{self.low.id}/")
+        response = self.client.get(self.low.get_absolute_url())
         self.assertContains(response, f"/cart/add/{self.low.id}/")
         self.assertNotContains(response, "OUT OF STOCK")
 
     def test_related_products_mark_out_of_stock_bags(self):
-        response = self.client.get(f"/bag/{self.sibling.id}/")      # lists Gone Bag
+        response = self.client.get(self.sibling.get_absolute_url())      # lists Gone Bag
         self.assertContains(response, "related-product-stock")
         self.assertContains(response, "OUT OF STOCK")
 
@@ -2362,7 +2385,7 @@ class PrivacyPageTests(TestCase):
         response = self.client.get("/privacy/")
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, '<h1 class="page-title">Privacy Policy</h1>')
-        self.assertEqual(page_title(response), "Privacy Policy \u2014 Bags &amp; Beyond")
+        self.assertEqual(page_title(response), "Privacy Policy | Bags &amp; Beyond")
         for section in (
             "What we collect", "How we use it", "Who sees it", "How long we keep it",
             "Keeping it safe", "Your rights", "Contact us",
@@ -2511,3 +2534,1017 @@ class ProductionSettingsTests(TestCase):
     def test_the_order_alert_address_is_a_setting(self):
         self.assertTrue(settings.ORDER_NOTIFICATION_EMAIL)
         self.assertIn("@", settings.ORDER_NOTIFICATION_EMAIL)
+
+
+# ===========================================================================
+# CART ICON + ADD TO CART POPUP, VISITOR ANALYTICS
+# ===========================================================================
+
+IPHONE = (
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 "
+    "(KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1"
+)
+ANDROID = (
+    "Mozilla/5.0 (Linux; Android 13; TECNO KG5) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/126.0.0.0 Mobile Safari/537.36"
+)
+WINDOWS = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/126.0.0.0 Safari/537.36"
+)
+GOOGLEBOT = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+
+
+class TrolleyAndPopupTests(TestCase):
+    """The cart icon is a supermarket trolley; Add to cart asks: continue shopping, or go to cart."""
+
+    def setUp(self):
+        self.bag = make_bag("Popup Bag", price=90000, stock=2)
+
+    def add(self, from_popup=True):
+        extra = {"HTTP_X_REQUESTED_WITH": "XMLHttpRequest"} if from_popup else {}
+        return self.client.post(f"/cart/add/{self.bag.id}/", **extra)
+
+    def test_the_header_cart_is_a_trolley_with_a_count(self):
+        html = self.client.get("/").content.decode()
+        self.assertIn('class="trolley-icon"', html)
+        self.assertNotIn('<path d="M9 8V6a3 3 0 0 1 6 0v2"></path>', html)      # the old bag handle
+        self.add()
+        self.assertContains(self.client.get("/"), '<span class="cart-badge">1</span>')
+
+    def test_every_page_carries_the_popup(self):
+        for url in ("/", "/cart/", "/privacy/"):
+            html = self.client.get(url).content.decode()
+            self.assertIn('id="added-modal"', html, url)
+            self.assertIn("Continue shopping", html, url)
+            self.assertIn('<a\n                    href="/cart/"\n                    class="modal-action-btn"\n                    id="added-go-cart"', html, url)
+
+    def test_the_bag_page_sends_add_to_cart_to_the_popup_script(self):
+        html = self.client.get(self.bag.get_absolute_url()).content.decode()
+        self.assertIn("data-add-to-cart", html)
+        self.assertIn("showPopup", html)
+        self.assertIn("added-continue", html)
+
+    def test_the_popup_script_gets_what_it_shows(self):
+        response = self.add()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {
+                "ok": True, "count": 1, "quantity": 1, "name": "Popup Bag",
+                "price": "90,000", "image": "",
+            },
+        )
+        self.assertEqual(self.add().json()["count"], 2)                # now 2 in the cart
+
+    def test_the_popup_script_is_told_when_it_cannot_add(self):
+        self.add()
+        self.add()                                                     # stock is 2
+        refused = self.add()
+        self.assertEqual(refused.json()["ok"], False)
+        self.assertEqual(refused.json()["count"], 2)
+
+    def test_the_popup_request_leaves_no_message_behind(self):
+        self.add()
+        self.add()
+        self.add()                                                     # refused
+        self.assertNotContains(self.client.get("/"), "IN STOCK")
+
+    def test_without_javascript_the_old_way_still_works(self):
+        response = self.add(from_popup=False)
+        self.assertRedirects(
+            response, self.bag.get_absolute_url(), fetch_redirect_response=False
+        )
+        self.assertContains(self.client.get(self.bag.get_absolute_url()), "POPUP BAG ADDED TO BAG")
+
+
+class AgentAndSourceTests(SimpleTestCase):
+    """What the shop works out from a visitor's browser and where they came from."""
+
+    def test_phones_tablets_and_computers(self):
+        self.assertEqual(analytics.describe_agent(IPHONE), ("mobile", "iOS", "Safari"))
+        self.assertEqual(analytics.describe_agent(ANDROID), ("mobile", "Android", "Chrome"))
+        self.assertEqual(analytics.describe_agent(WINDOWS), ("desktop", "Windows", "Chrome"))
+        ipad = "Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Version/17.5 Safari/604.1"
+        self.assertEqual(analytics.describe_agent(ipad), ("tablet", "iOS", "Safari"))
+
+    def test_links_opened_inside_apps(self):
+        tiktok = ANDROID + " musical_ly_2023 BytedanceWebview/d8a21c6"
+        instagram = IPHONE + " Instagram 330.0"
+        facebook = ANDROID + " [FB_IAB/FB4A;FBAV/450.0]"
+        self.assertEqual(analytics.describe_agent(tiktok)[2], "TikTok app")
+        self.assertEqual(analytics.describe_agent(instagram)[2], "Instagram app")
+        self.assertEqual(analytics.describe_agent(facebook)[2], "Facebook app")
+        self.assertEqual(analytics.describe_agent(ANDROID + " SamsungBrowser/24.0")[2], "Samsung Internet")
+        self.assertEqual(analytics.describe_agent(ANDROID + " UCBrowser/13.4")[2], "UC Browser")
+
+    def test_programs_are_not_people(self):
+        for agent in (
+            GOOGLEBOT, "", None, "WhatsApp/2.23.20 A", "facebookexternalhit/1.1",
+            "UptimeRobot/2.0", "python-requests/2.31", "curl/8.4.0",
+            WINDOWS.replace("Chrome", "HeadlessChrome"),
+        ):
+            self.assertIsNone(analytics.describe_agent(agent), agent)
+
+    def test_where_a_visit_came_from(self):
+        source = analytics.traffic_source
+        self.assertEqual(source("https://www.google.com/search?q=bags", "", "shop.test"), "Google")
+        self.assertEqual(source("https://l.facebook.com/l.php?u=x", "", "shop.test"), "Facebook")
+        self.assertEqual(source("https://www.tiktok.com/", "", "shop.test"), "TikTok")
+        self.assertEqual(source("https://t.co/abc", "", "shop.test"), "X (Twitter)")
+        self.assertEqual(source("https://blog.example.org/post", "", "shop.test"), "blog.example.org")
+        self.assertEqual(source("", "", "shop.test"), "Direct")                  # typed in
+        self.assertEqual(source("https://shop.test/bag/1/", "", "shop.test"), "")  # moving around the shop
+        self.assertEqual(source("https://www.shop.test/", "", "shop.test"), "")
+        self.assertEqual(source("", "whatsapp", "shop.test"), "WhatsApp")        # a tagged link wins
+        self.assertEqual(source("https://google.com/", "TikTok", "shop.test"), "TikTok")
+        self.assertEqual(source("", "radio_ad", "shop.test"), "Radio_Ad")
+
+    def test_private_parts_of_an_address_are_never_kept(self):
+        tidy = analytics.tidy_path
+        self.assertEqual(tidy("/"), "/")
+        self.assertEqual(tidy("/category/gym-bags/"), "/category/gym-bags/")
+        self.assertEqual(tidy("/bag/12/zara-tote/"), "/bag/12/zara-tote/")
+        self.assertEqual(tidy("/cart/"), "/cart/")
+        self.assertEqual(tidy("/order/ABC123DEF456/"), "/order/")
+        self.assertEqual(tidy("/accounts/password/reset/key/abc-123-xyz/"), "/accounts/")
+        self.assertEqual(tidy("/login/"), "/login/")
+        self.assertEqual(tidy("not-a-path"), "")
+
+
+class VisitTrackingTests(TestCase):
+    """Page views are counted, and nothing that identifies a person is kept."""
+
+    def setUp(self):
+        cache.clear()                                    # the per-minute limit lives in the cache
+
+    def hit(self, data=None, agent=IPHONE, ip="203.0.113.9", origin="http://testserver", **headers):
+        extra = {"HTTP_USER_AGENT": agent, "REMOTE_ADDR": ip, **headers}
+        if origin:
+            extra["HTTP_ORIGIN"] = origin
+        return self.client.post(
+            "/v/", json.dumps({"path": "/", **(data or {})}),
+            content_type="text/plain;charset=UTF-8", **extra,
+        )
+
+    def events(self):
+        return list(VisitEvent.objects.order_by("id"))
+
+    def test_a_page_view_is_counted_without_any_personal_data(self):
+        self.assertEqual(self.hit().status_code, 204)
+
+        (event,) = self.events()
+        self.assertEqual((event.kind, event.path), ("page", "/"))
+        self.assertEqual((event.device, event.os, event.browser), ("mobile", "iOS", "Safari"))
+        self.assertRegex(event.visitor, r"^[0-9a-f]{16}$")
+
+        everything = " ".join(str(getattr(event, f.name)) for f in VisitEvent._meta.fields)
+        self.assertNotIn("203.0.113.9", everything)             # no IP address
+        self.assertNotIn("iPhone", everything)                  # no browser string
+        self.assertNotIn("CPU iPhone OS", everything)
+        self.assertEqual(
+            {f.name for f in VisitEvent._meta.fields},
+            {"id", "created_at", "day", "hour", "visitor", "kind", "path", "bag_id", "category",
+             "term", "results", "source", "device", "os", "browser"},
+        )
+
+    def test_no_cookie_is_set(self):
+        self.assertEqual(self.hit().cookies, {})
+
+    def test_the_visitor_code_changes_every_day_and_between_people(self):
+        request = RequestFactory().get("/", HTTP_USER_AGENT=IPHONE, REMOTE_ADDR="203.0.113.9")
+        other = RequestFactory().get("/", HTTP_USER_AGENT=IPHONE, REMOTE_ADDR="203.0.113.10")
+        today = timezone.now()
+
+        self.assertEqual(analytics.visitor_code(request, today), analytics.visitor_code(request, today))
+        self.assertNotEqual(analytics.visitor_code(request, today), analytics.visitor_code(other, today))
+        self.assertNotEqual(
+            analytics.visitor_code(request, today),
+            analytics.visitor_code(request, today + timedelta(days=1)),
+        )
+
+    def test_the_real_address_behind_the_proxy_is_used(self):
+        one = RequestFactory().get("/", HTTP_USER_AGENT=IPHONE, REMOTE_ADDR="10.0.0.1",
+                                   HTTP_X_FORWARDED_FOR="198.51.100.7, 10.0.0.1")
+        two = RequestFactory().get("/", HTTP_USER_AGENT=IPHONE, REMOTE_ADDR="10.0.0.1",
+                                   HTTP_X_FORWARDED_FOR="198.51.100.8, 10.0.0.1")
+        self.assertNotEqual(analytics.visitor_code(one), analytics.visitor_code(two))
+
+    def test_a_bag_a_search_and_a_category_are_kept(self):
+        self.hit({"path": "/bag/5/some-bag/", "bag": 5})
+        self.hit({"term": "  Black Laptop Bag ", "results": 3})
+        self.hit({"path": "/category/handbags/", "category": "Handbags"})
+
+        bag, search, category = self.events()
+        self.assertEqual((bag.bag_id, bag.path), (5, "/bag/5/some-bag/"))
+        self.assertEqual((search.term, search.results), ("black laptop bag", 3))
+        self.assertEqual(category.category, "Handbags")
+
+    def test_where_the_visit_came_from_is_kept(self):
+        self.hit({"ref": "https://www.google.com/"}, ip="198.51.100.1")
+        self.hit({"src": "whatsapp"}, ip="198.51.100.2")
+        self.hit({"ref": "http://testserver/bag/1/"}, ip="198.51.100.3")      # moving around the shop
+        self.hit({}, ip="198.51.100.4")
+        self.assertEqual([e.source for e in self.events()], ["Google", "WhatsApp", "", "Direct"])
+
+    def test_programs_staff_and_other_sites_are_not_counted(self):
+        self.hit(agent=GOOGLEBOT)
+        self.hit(agent="")
+        self.hit(origin="https://evil.example")                 # sent from another site
+        self.hit(origin=None)                                   # no sign it came from the shop
+        self.assertEqual(self.events(), [])
+
+        staff = User.objects.create_user(username="s", password=TEST_PASSWORD, is_staff=True)
+        self.client.force_login(staff)
+        self.hit()
+        self.assertEqual(self.events(), [])
+
+    def test_a_referer_from_the_shop_is_enough_when_there_is_no_origin(self):
+        self.hit(origin=None, HTTP_REFERER="http://testserver/bag/1/")
+        self.assertEqual(len(self.events()), 1)
+
+    def test_admin_health_and_file_addresses_are_not_counted(self):
+        for path in ("/admin/store/order/", "/healthz/", "/static/store/css/style.css", "/v/", "/favicon.ico"):
+            self.hit({"path": path})
+        self.assertEqual(self.events(), [])
+
+    def test_order_numbers_and_reset_keys_never_reach_the_database(self):
+        self.hit({"path": "/order/ABC123DEF456/"}, ip="198.51.100.1")
+        self.hit({"path": "/accounts/password/reset/key/abc-123-xyz/"}, ip="198.51.100.2")
+        self.assertEqual([e.path for e in self.events()], ["/order/", "/accounts/"])
+
+    def test_too_many_hits_from_one_visitor_are_dropped(self):
+        for _ in range(analytics.HITS_PER_MINUTE + 15):
+            self.hit()
+        self.assertEqual(len(self.events()), analytics.HITS_PER_MINUTE)
+
+    def test_nonsense_never_causes_an_error(self):
+        self.assertEqual(self.client.get("/v/").status_code, 405)
+        for body in ("not json", "[1, 2]", '"text"', "{" * 50, "", "null"):
+            response = self.client.post(
+                "/v/", body, content_type="text/plain", HTTP_USER_AGENT=IPHONE,
+                HTTP_ORIGIN="http://testserver",
+            )
+            self.assertEqual(response.status_code, 204, body)
+        self.assertEqual(self.events(), [])
+
+        self.hit({"bag": "abc", "results": "x", "term": "q" * 500, "path": "/" + "a" * 500})
+        self.assertEqual(len(self.events()), 1)                 # odd values are tidied, not trusted
+        self.assertEqual(self.events()[0].term, "q" * 80)
+
+    def test_a_visit_that_cannot_be_saved_never_breaks_the_page(self):
+        with mock.patch("store.analytics.VisitEvent.objects.create", side_effect=RuntimeError("db down")):
+            with self.assertLogs("store.views", level="ERROR"):
+                self.assertEqual(self.hit().status_code, 204)
+
+    def test_add_to_cart_is_counted_once_and_only_when_it_works(self):
+        bag = make_bag("Counted Bag", stock=1)
+        self.client.post(f"/cart/add/{bag.id}/", HTTP_USER_AGENT=IPHONE)
+        self.client.post(f"/cart/add/{bag.id}/", HTTP_USER_AGENT=IPHONE)       # over the stock: refused
+        sold_out = make_bag("Sold Out Bag", stock=0)
+        self.client.post(f"/cart/add/{sold_out.id}/", HTTP_USER_AGENT=IPHONE)
+
+        (event,) = self.events()
+        self.assertEqual((event.kind, event.bag_id), ("cart", bag.id))
+
+    def test_a_broken_statistics_table_never_breaks_the_cart(self):
+        bag = make_bag("Safe Bag", stock=3)
+        with mock.patch("store.analytics.record_cart_add", side_effect=RuntimeError("no table")):
+            with self.assertLogs("store.views", level="ERROR"):
+                response = self.client.post(f"/cart/add/{bag.id}/", HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+        self.assertTrue(response.json()["ok"])
+
+    def test_the_pages_carry_the_small_script(self):
+        bag = make_bag("Script Bag")
+        page = self.client.get(bag.get_absolute_url()).content.decode()
+        self.assertIn('id="visit-data" type="application/json">{"bag": %d}' % bag.id, page)
+        self.assertIn("navigator.sendBeacon", page)
+        self.assertIn('"/v/"', page)
+        self.assertIn("doNotTrack", page)
+
+        home = self.client.get("/").content.decode()
+        self.assertIn("navigator.sendBeacon", home)
+        self.assertNotIn('id="visit-data"', home)
+
+    def test_a_search_page_reports_what_was_searched_and_how_many_were_found(self):
+        make_bag("Zebra Bag")
+        page = self.client.get("/", {"q": "zebra"}).content.decode()
+        self.assertIn('{"term": "zebra", "results": 1}', page)
+
+    def test_staff_do_not_even_load_the_script(self):
+        staff = User.objects.create_user(username="s", password=TEST_PASSWORD, is_staff=True)
+        self.client.force_login(staff)
+        self.assertNotIn("navigator.sendBeacon", self.client.get("/").content.decode())
+
+    def test_the_privacy_policy_tells_visitors_about_it(self):
+        html = self.client.get("/privacy/").content.decode()
+        self.assertIn("Visit statistics", html)
+        self.assertIn("Do Not Track", html)
+        self.assertIn("We do not store your name or your IP address", html)
+
+
+class VisitorDashboardTests(TestCase):
+    """The Visitor analytics page in the admin."""
+
+    def setUp(self):
+        today = timezone.localdate()
+        self.today = today
+        self.duffle = make_bag("Duffle One", price=50000, stock=9)
+        self.tote = make_bag("Tote Two", price=30000, stock=9)
+
+        def event(visitor, kind="page", day=today, **fields):
+            return VisitEvent.objects.create(
+                day=day, hour=fields.pop("hour", 10), visitor=visitor * 16, kind=kind,
+                device=fields.pop("device", "mobile"), os=fields.pop("os", "Android"),
+                browser=fields.pop("browser", "Chrome"), **fields,
+            )
+
+        # visitor a: from Google, two bags, adds one, reaches the checkout
+        event("a", path="/", source="Google")
+        event("a", path="/bag/1/", bag_id=self.duffle.id)
+        event("a", path="/bag/2/", bag_id=self.tote.id)
+        event("a", kind="cart", path="/cart/", bag_id=self.duffle.id)
+        event("a", path="/checkout/")
+        # visitor b: from TikTok, opens the duffle, searches for something that is not there
+        event("b", path="/", source="TikTok", hour=14)
+        event("b", path="/bag/1/", bag_id=self.duffle.id)
+        event("b", path="/", term="wedding handbag", results=0)
+        event("b", path="/", term="tote", results=2)
+        # visitor c: a computer, direct, opens a bag and a category
+        event("c", path="/", source="Direct", device="desktop", os="Windows", browser="Edge")
+        event("c", path="/bag/2/", bag_id=self.tote.id, device="desktop", os="Windows", browser="Edge")
+        event("c", path="/category/handbags/", category="Handbags", device="desktop", os="Windows", browser="Edge")
+        # a visitor from 40 days ago, and a bag that has since been deleted
+        event("d", path="/", source="Direct", day=today - timedelta(days=40))
+        event("e", path="/bag/9/", bag_id=999999)
+
+        customer = User.objects.create_user(username="c@example.com", email="c@example.com", password=TEST_PASSWORD)
+        make_order(customer, [(self.duffle, 2)], status="DELIVERED")           # UGX 100,000
+        make_order(customer, [(self.duffle, 5)], status="CANCELLED")           # left out
+
+        self.staff = User.objects.create_superuser(username="boss", email="boss@example.com", password=TEST_PASSWORD)
+        self.client.force_login(self.staff)
+
+    def test_the_headline_numbers(self):
+        stats = analytics.build_dashboard(30)
+        self.assertEqual(stats["visitors"], 4)                  # a, b, c and e (d is 40 days ago)
+        self.assertEqual(stats["page_views"], 12)
+        self.assertEqual(stats["bag_views"], 5)
+        self.assertEqual(stats["cart_adds"], 1)
+        self.assertEqual(stats["orders"], 1)                    # the cancelled one is left out
+        self.assertEqual(stats["revenue"], 100000)
+        self.assertEqual(stats["conversion"], 25.0)
+        self.assertTrue(stats["has_data"])
+
+    def test_the_periods(self):
+        self.assertEqual(analytics.build_dashboard(1)["visitors"], 4)
+        self.assertEqual(analytics.build_dashboard(7)["visitors"], 4)
+        self.assertEqual(analytics.build_dashboard(90)["visitors"], 5)         # includes d
+        self.assertEqual(analytics.build_dashboard(0)["visitors"], 5)          # all time
+
+    def test_which_bags_are_opened_the_most(self):
+        bags = analytics.build_dashboard(30)["top_bags"]
+        first, second = bags[0], bags[1]
+        self.assertEqual(
+            (first["name"], first["views"], first["people"], first["adds"], first["bought"], first["rate"]),
+            ("Duffle One", 2, 2, 1, 2, 50),
+        )
+        self.assertEqual((second["name"], second["views"], second["adds"], second["bought"]), ("Tote Two", 2, 0, 0))
+        self.assertEqual(first["category"], "Everyday")
+        self.assertIn("(deleted bag #999999)", [row["name"] for row in bags])
+        self.assertEqual(first["bar"], 100)
+
+    def test_the_other_tables(self):
+        stats = analytics.build_dashboard(30)
+        self.assertEqual({r["source"]: r["people"] for r in stats["sources"]}, {"Google": 1, "TikTok": 1, "Direct": 1})
+        self.assertEqual({r["device"]: r["people"] for r in stats["devices"]}, {"mobile": 3, "desktop": 1})
+        self.assertEqual({r["browser"]: r["people"] for r in stats["browsers"]}, {"Chrome": 3, "Edge": 1})
+        self.assertEqual([r["category"] for r in stats["categories"]], ["Handbags"])
+        self.assertEqual(
+            {r["term"]: (r["times"], r["found"], r["nothing"]) for r in stats["searches"]},
+            {"wedding handbag": (1, 0, 1), "tote": (1, 2, 0)},
+        )
+        self.assertEqual({r["label"]: r["views"] for r in stats["hours"]}["14"], 1)
+        self.assertEqual(sum(r["views"] for r in stats["hours"]), 12)
+
+    def test_from_visit_to_order(self):
+        funnel = {row["label"]: row["people"] for row in analytics.build_dashboard(30)["funnel"]}
+        self.assertEqual(
+            list(funnel.values()), [4, 4, 1, 1, 1]
+        )                                                        # visited, bag, cart, checkout, ordered
+
+    def test_each_day_has_a_bar_and_the_chart_ends_today(self):
+        daily = analytics.build_dashboard(30)["daily"]
+        self.assertEqual(len(daily), 30)
+        self.assertEqual(daily[-1]["day"], self.today)
+        self.assertEqual(daily[-1]["visitors"], 4)
+        self.assertEqual(daily[-1]["bar"], 100)
+        VisitEvent.objects.create(day=self.today - timedelta(days=100), hour=1, visitor="y" * 16, kind="page")
+        self.assertEqual(len(analytics.build_dashboard(0)["daily"]), 60)       # the chart shows 60 days at most
+
+    def test_the_admin_page(self):
+        response = self.client.get("/admin/store/visitevent/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Visitor analytics")
+        for text in ("Duffle One", "Tote Two", "wedding handbag", "Google", "TikTok", "Visitors each day",
+                     "Busiest hours of the day", "UGX 100,000", "(deleted bag #999999)"):
+            self.assertContains(response, text)
+        self.assertContains(response, '<a href="?days=30" class="on">30 days</a>', html=True)
+
+    def test_the_period_in_the_address_is_checked(self):
+        self.assertContains(self.client.get("/admin/store/visitevent/?days=7"), '<a href="?days=7" class="on">7 days</a>', html=True)
+        self.assertContains(self.client.get("/admin/store/visitevent/?days=abc"), '<a href="?days=30" class="on">30 days</a>', html=True)
+        self.assertContains(self.client.get("/admin/store/visitevent/?days=5"), '<a href="?days=30" class="on">30 days</a>', html=True)
+
+    def test_a_shop_with_no_visits_yet(self):
+        VisitEvent.objects.all().delete()
+        response = self.client.get("/admin/store/visitevent/")
+        self.assertContains(response, "No visits recorded yet")
+        self.assertContains(response, "<b>0</b>", html=False)
+
+    def test_it_is_in_the_admin_menu_and_only_for_staff(self):
+        self.assertContains(self.client.get("/admin/"), "Visitor analytics")
+
+        self.client.logout()
+        self.assertEqual(self.client.get("/admin/store/visitevent/").status_code, 302)       # to the login page
+
+        customer = User.objects.create_user(username="x@example.com", password=TEST_PASSWORD)
+        self.client.force_login(customer)
+        self.assertEqual(self.client.get("/admin/store/visitevent/").status_code, 302)
+
+    def test_nothing_can_be_added_or_edited_by_hand(self):
+        self.assertEqual(self.client.get("/admin/store/visitevent/add/").status_code, 403)
+
+    def test_old_events_can_be_cleared_out(self):
+        VisitEvent.objects.create(day=self.today - timedelta(days=500), hour=1, visitor="z" * 16, kind="page")
+        call_command("prune_visits", stdout=io.StringIO())
+        self.assertFalse(VisitEvent.objects.filter(day__lt=self.today - timedelta(days=400)).exists())
+        self.assertTrue(VisitEvent.objects.filter(day=self.today).exists())
+
+        out = io.StringIO()
+        call_command("prune_visits", days=5, stdout=out)
+        self.assertFalse(VisitEvent.objects.filter(day__lt=self.today - timedelta(days=5)).exists())
+        self.assertIn("Deleted", out.getvalue())
+
+
+# ===========================================================================
+# SEO (PAGE TAGS, STRUCTURED DATA, ROBOTS, SITEMAP) AND SPEED
+# ===========================================================================
+
+def meta(html, key, attribute="name"):
+    """The content of <meta name="..."> (or property="...")."""
+    found = re.search(r'<meta %s="%s" content="([^"]*)"' % (attribute, re.escape(key)), html)
+    return unescape(found.group(1)) if found else None
+
+
+def canonical(html):
+    found = re.search(r'<link rel="canonical" href="([^"]*)"', html)
+    return unescape(found.group(1)) if found else None
+
+
+def ld_blocks(html):
+    """Every structured-data block of a page, read back as Python data."""
+    return [
+        json.loads(block)
+        for block in re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S)
+    ]
+
+
+def with_picture(bag, name="bags/p1.png"):
+    return BagImage.objects.create(bag=bag, image=name, order=1)
+
+
+class ImageSizeFilterTests(SimpleTestCase):
+    """Pictures come from Cloudinary in the size and format each screen needs."""
+
+    URL = "https://res.cloudinary.com/demo/image/upload/v1700000000/bags/zara.jpg"
+
+    def test_a_smaller_picture_is_asked_for(self):
+        self.assertEqual(
+            cld(self.URL, 480),
+            "https://res.cloudinary.com/demo/image/upload/f_auto,q_auto,w_480,c_limit/v1700000000/bags/zara.jpg",
+        )
+
+    def test_other_addresses_and_bad_widths_are_left_alone(self):
+        self.assertEqual(cld("/media/bags/zara.jpg", 480), "/media/bags/zara.jpg")
+        self.assertEqual(cld(self.URL, "wide"), self.URL)
+        self.assertEqual(cld("", 480), "")
+        self.assertEqual(cld(None, 480), "")
+
+    def test_the_browser_gets_several_sizes_to_choose_from(self):
+        attribute = cld_srcset(self.URL, "240,480")
+        self.assertEqual(
+            attribute,
+            'srcset="https://res.cloudinary.com/demo/image/upload/f_auto,q_auto,w_240,c_limit/v1700000000/bags/zara.jpg 240w, '
+            'https://res.cloudinary.com/demo/image/upload/f_auto,q_auto,w_480,c_limit/v1700000000/bags/zara.jpg 480w"',
+        )
+        self.assertEqual(cld_srcset("/media/bags/zara.jpg", "240,480"), "")
+
+
+class PictureTests(TestCase):
+    """Every picture on the shop is the right size for where it is shown."""
+
+    def setUp(self):
+        self.bags = [make_bag(f"Pic Bag {i}", featured=i) for i in range(1, 7)]
+        for bag in self.bags:
+            with_picture(bag)
+
+    def test_shop_cards_ask_for_small_pictures(self):
+        html = self.client.get("/").content.decode()
+        self.assertEqual(html.count("f_auto,q_auto,w_480,c_limit/v1/bags/p1.png"), 12)      # src + srcset, 6 cards
+        self.assertIn('sizes="(min-width: 900px) 24vw, 46vw"', html)
+        self.assertNotIn('src="https://res.cloudinary.com/x/image/upload/v1/bags/p1.png"', html)
+
+    def test_only_the_first_cards_load_at_once(self):
+        cards = re.findall(r"<img[^>]*>", self.client.get("/").content.decode())
+        cards = [tag for tag in cards if "bags/p1.png" in tag]
+        self.assertEqual(len(cards), 6)
+        self.assertEqual(
+            ["high" if 'fetchpriority="high"' in tag else "lazy" if 'loading="lazy"' in tag else "normal" for tag in cards],
+            ["high", "high", "normal", "normal", "lazy", "lazy"],
+        )
+        self.assertTrue(all('width="480"' in tag and 'height="600"' in tag for tag in cards))
+
+    def test_the_bag_page_loads_its_main_picture_first_and_the_rest_later(self):
+        bag = self.bags[0]
+        for number, name in enumerate(("bags/p2.png", "bags/p3.png", "bags/p4.png"), start=2):
+            BagImage.objects.create(bag=bag, image=name, order=number)
+
+        slides = re.findall(r"<img[^>]*>", self.client.get(bag.get_absolute_url()).content.decode())
+        slides = [tag for tag in slides if "w_960" in tag]
+        self.assertEqual(len(slides), 4)
+        self.assertIn('fetchpriority="high"', slides[0])
+        self.assertNotIn('loading="lazy"', slides[1])
+        self.assertIn('loading="lazy"', slides[2])
+        self.assertIn('loading="lazy"', slides[3])
+        self.assertIn('sizes="(min-width: 900px) 50vw, 100vw"', slides[0])
+
+    def test_related_bags_and_the_cart_use_small_pictures_too(self):
+        bag = self.bags[0]
+        related = self.client.get(bag.get_absolute_url()).content.decode()
+        self.assertIn("w_360,c_limit", related)
+
+        self.client.post(f"/cart/add/{bag.id}/")
+        cart = self.client.get("/cart/").content.decode()
+        self.assertIn("f_auto,q_auto,w_216,c_limit", cart)
+
+    def test_the_logo_is_a_small_webp(self):
+        response = self.client.get("/logo-640.webp")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/webp")
+        self.assertIn("max-age=", response["Cache-Control"])
+        data = response.content
+        self.assertEqual((data[:4], data[8:12]), (b"RIFF", b"WEBP"))
+        self.assertEqual(Image.open(io.BytesIO(data)).size[0], 640)
+
+        png = (views.ICON_FOLDER / "bag-store-logo.png").stat().st_size
+        self.assertLess(len(data), png * 0.6)                  # well under the 56 KB PNG
+        self.assertLess(len(self.client.get("/logo-320.webp").content), png / 3)
+        self.assertEqual(self.client.get("/logo-480.webp").status_code, 200)
+        self.assertEqual(self.client.get("/logo-123.webp").status_code, 404)
+
+    def test_the_header_offers_the_small_logo_with_the_png_as_a_fallback(self):
+        html = self.client.get("/").content.decode()
+        self.assertIn('<source\n                    type="image/webp"', html)
+        self.assertIn("/logo-320.webp 320w, /logo-480.webp 480w, /logo-640.webp 640w", html)
+        self.assertIn("bag-store-logo", html)                  # the PNG for older browsers
+
+
+class PageLoadingTests(TestCase):
+    """Nothing holds the page back, and nothing is asked of the database twice."""
+
+    def test_the_font_does_not_block_the_page(self):
+        html = self.client.get("/").content.decode()
+        self.assertIn('rel="preload"', html)
+        self.assertIn("onload=\"this.onload=null;this.rel='stylesheet'\"", html)
+        self.assertIn("<noscript>", html)
+        self.assertIn('<link rel="preconnect" href="https://res.cloudinary.com" crossorigin>', html)
+        self.assertNotIn('rel="stylesheet">\n    <meta name="theme-color"', html)
+
+    def test_pages_are_compressed(self):
+        response = self.client.get("/", HTTP_ACCEPT_ENCODING="gzip")
+        self.assertEqual(response["Content-Encoding"], "gzip")
+        self.assertIn(b"Bags &amp; Beyond", gzip.decompress(response.content))
+        plain = self.client.get("/")
+        self.assertNotIn("Content-Encoding", plain)
+        self.assertLess(len(response.content), len(plain.content) / 2)
+
+    def test_a_first_visit_creates_no_session_and_no_cookie(self):
+        for url in ("/", "/cart/", "/privacy/", "/category/gym-bags/"):
+            response = self.client.get(url)
+            self.assertNotIn("sessionid", response.cookies, url)
+        self.assertEqual(Session.objects.count(), 0)
+
+    def test_the_session_starts_when_a_bag_is_added(self):
+        bag = make_bag("Cart Bag", stock=3)
+        response = self.client.post(f"/cart/add/{bag.id}/")
+        self.assertIn("sessionid", response.cookies)
+        self.assertEqual(Session.objects.count(), 1)
+        self.assertContains(self.client.get("/"), '<span class="cart-badge">1</span>')
+
+    def test_the_cart_still_changes_and_empties_as_before(self):
+        bag = make_bag("Cart Bag", stock=5)
+        self.client.post(f"/cart/add/{bag.id}/")
+        self.client.post(f"/cart/add/{bag.id}/")
+        self.assertContains(self.client.get("/"), '<span class="cart-badge">2</span>')
+        self.client.post(f"/cart/decrease/{bag.id}/")
+        self.assertContains(self.client.get("/"), '<span class="cart-badge">1</span>')
+        self.client.post(f"/cart/remove/{bag.id}/")
+        self.assertNotContains(self.client.get("/"), "cart-badge")
+
+    def test_the_cart_count_needs_no_database(self):
+        request = RequestFactory().get("/")
+        request.session = {"cart": {"1": 2, "2": "bad", "3": 1}}
+        with self.assertNumQueries(0):
+            self.assertEqual(Cart(request).count(), 3)
+
+        request.session = {}
+        self.assertEqual(Cart(request).count(), 0)
+        self.assertNotIn("cart", request.session)             # looking at the cart stores nothing
+
+    def test_the_category_list_is_not_read_again_for_every_page(self):
+        self.client.get("/")                                    # fills the cache
+        with CaptureQueriesContext(connection) as again:
+            self.client.get("/privacy/")
+        self.assertFalse(any('"store_category"' in q["sql"] for q in again.captured_queries))
+
+    def test_a_changed_category_shows_at_once(self):
+        self.client.get("/")
+        Category.objects.filter(name="Tote Bags").first().save()    # clears the saved list
+        Category.objects.create(name="Aprons")
+        self.assertContains(self.client.get("/privacy/"), "Aprons")
+        Category.objects.get(name="Aprons").delete()
+        self.assertNotContains(self.client.get("/privacy/"), "Aprons")
+
+    def test_the_front_page_asks_the_database_for_very_little(self):
+        for i in range(1, 13):
+            with_picture(make_bag(f"Quick {i}", featured=i))
+        self.client.get("/")
+        with CaptureQueriesContext(connection) as page:
+            self.client.get("/")
+        self.assertLessEqual(len(page.captured_queries), 4)    # the bags, their pictures, the count
+
+    def test_a_bag_page_asks_the_database_for_very_little(self):
+        bag = make_bag("Quick Bag")
+        with_picture(bag)
+        self.client.get("/")
+        with CaptureQueriesContext(connection) as page:
+            self.client.get(bag.get_absolute_url())
+        self.assertLessEqual(len(page.captured_queries), 5)
+
+
+class SlugAddressTests(TestCase):
+    """A bag has one address, /bag/12/zara-tote/, and a category has /category/gym-bags/."""
+
+    def test_the_addresses(self):
+        bag = make_bag("Zara's Tote \u2013 Big!")
+        self.assertEqual(bag.get_absolute_url(), f"/bag/{bag.id}/zaras-tote-big/")
+        self.assertEqual(Category.objects.get(name="Gym Bags").get_absolute_url(), "/category/gym-bags/")
+        self.assertEqual(make_bag("\u2605\u2605").get_absolute_url().split("/")[-2], "bag")
+
+    def test_the_short_and_the_wrong_addresses_lead_to_the_proper_one(self):
+        bag = make_bag("Zara Tote")
+        for url in (f"/bag/{bag.id}/", f"/bag/{bag.id}/old-name/"):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 301, url)
+            self.assertEqual(response["Location"], f"/bag/{bag.id}/zara-tote/")
+        self.assertEqual(self.client.get(f"/bag/{bag.id}/zara-tote/").status_code, 200)
+
+    def test_tracking_tags_survive_the_redirect(self):
+        bag = make_bag("Zara Tote")
+        response = self.client.get(f"/bag/{bag.id}/?utm_source=whatsapp&x=1")
+        self.assertEqual(response["Location"], f"/bag/{bag.id}/zara-tote/?utm_source=whatsapp&x=1")
+
+    def test_a_bag_that_does_not_exist_is_a_404(self):
+        self.assertEqual(self.client.get("/bag/9999/anything/").status_code, 404)
+        self.assertEqual(self.client.get("/category/no-such-category/").status_code, 404)
+
+    def test_renaming_a_bag_moves_its_address_for_good(self):
+        bag = make_bag("First Name")
+        Bag.objects.filter(pk=bag.pk).update(name="Second Name")
+        response = self.client.get(f"/bag/{bag.id}/first-name/")
+        self.assertEqual(response["Location"], f"/bag/{bag.id}/second-name/")
+
+    def test_adding_to_the_cart_comes_back_to_the_proper_address(self):
+        bag = make_bag("Zara Tote")
+        response = self.client.post(f"/cart/add/{bag.id}/")
+        self.assertEqual(response["Location"], bag.get_absolute_url())
+
+    def test_the_menu_and_filter_buttons_still_filter_by_name(self):
+        make_bag("Gym One", category=Category.objects.get(name="Gym Bags"))
+        self.assertEqual(names(self.client.get("/", {"category": "Gym Bags"})), ["Gym One"])
+        self.assertEqual(names(self.client.get("/category/gym-bags/")), ["Gym One"])
+        self.assertEqual(names(self.client.get("/category/tote-bags/")), [])
+
+
+class SeoTagTests(TestCase):
+    """The tags search engines and shared links (WhatsApp, Facebook, TikTok) read."""
+
+    def setUp(self):
+        self.gym = Category.objects.get(name="Gym Bags")
+        self.bag = make_bag("Zara Tote", price=90000, stock=3, category=self.gym, featured=1)
+        Bag.objects.filter(pk=self.bag.pk).update(
+            description="A roomy tote for the gym.\n\nWipes clean, with a zip pocket."
+        )
+        self.bag.refresh_from_db()
+
+    def test_the_front_page(self):
+        html = self.client.get("/").content.decode()
+        title = unescape(page_title(self.client.get("/")))
+        self.assertEqual(title, "Bags & Beyond | Handbags, Laptop Bags & Luggage in Kampala")
+        self.assertLessEqual(len(title), 60)
+        description = meta(html, "description")
+        self.assertIn("Kampala, Uganda", description)
+        self.assertIn("Pay on delivery", description)
+        self.assertLessEqual(len(description), 160)
+        self.assertEqual(canonical(html), "http://testserver/")
+        self.assertEqual(meta(html, "robots"), "index, follow, max-image-preview:large")
+        self.assertEqual(meta(html, "og:title", "property"), title)
+        self.assertEqual(meta(html, "og:type", "property"), "website")
+        self.assertEqual(meta(html, "og:locale", "property"), "en_UG")
+        self.assertEqual(meta(html, "og:url", "property"), "http://testserver/")
+        self.assertEqual(meta(html, "og:image", "property"), "http://testserver/social-card.png")
+        self.assertEqual(meta(html, "twitter:card"), "summary_large_image")
+        self.assertIn('<html lang="en">', html)
+
+    def test_the_front_page_tells_search_engines_who_the_shop_is(self):
+        blocks = {block["@type"]: block for block in ld_blocks(self.client.get("/").content.decode())}
+        organization = blocks["Organization"]
+        self.assertEqual(organization["name"], "Bags & Beyond")
+        self.assertEqual(organization["contactPoint"]["telephone"], "+256789000053")
+        self.assertTrue(organization["logo"].startswith("http://testserver/static/store/images/bag-store-logo"))
+        self.assertTrue(all(link.startswith("https://") for link in organization["sameAs"]))
+        search = blocks["WebSite"]["potentialAction"]
+        self.assertEqual(search["target"]["urlTemplate"], "http://testserver/?q={search_term_string}")
+        self.assertEqual(search["@type"], "SearchAction")
+
+    def test_the_shops_own_address_is_used_when_it_is_set(self):
+        with self.settings(SITE_URL="https://shop.example"):
+            html = self.client.get("/").content.decode()
+        self.assertEqual(canonical(html), "https://shop.example/")
+        self.assertEqual(meta(html, "og:image", "property"), "https://shop.example/social-card.png")
+        self.assertIn('"url":"https://shop.example/"', html)
+
+    def test_a_category_page(self):
+        response = self.client.get("/category/gym-bags/")
+        html = response.content.decode()
+        self.assertEqual(unescape(page_title(response)), "Gym Bags in Kampala, Uganda | Bags & Beyond")
+        self.assertEqual(canonical(html), "http://testserver/category/gym-bags/")
+        self.assertEqual(meta(html, "robots"), "index, follow, max-image-preview:large")
+        self.assertTrue(meta(html, "description").startswith("Gym bags for training, sports and the gym."))
+        self.assertContains(response, '<h1 class="shop-title">Gym Bags</h1>')
+        self.assertContains(response, '<p class="shop-intro">Gym bags for training, sports and the gym.</p>')
+        self.assertContains(response, '<li aria-current="page">Gym Bags</li>')
+        crumbs = [b for b in ld_blocks(html) if b["@type"] == "BreadcrumbList"][0]["itemListElement"]
+        self.assertEqual(
+            [(c["position"], c["name"], c["item"]) for c in crumbs],
+            [(1, "Home", "http://testserver/"), (2, "Gym Bags", "http://testserver/category/gym-bags/")],
+        )
+
+    def test_what_the_owner_writes_for_a_category_is_used(self):
+        Category.objects.filter(pk=self.gym.pk).update(description="Our own words about gym bags.")
+        cache.clear()
+        response = self.client.get("/category/gym-bags/")
+        self.assertContains(response, '<p class="shop-intro">Our own words about gym bags.</p>')
+        self.assertEqual(meta(response.content.decode(), "description"), "Our own words about gym bags.")
+
+    def test_every_category_has_its_own_description(self):
+        seen = set()
+        for category in Category.objects.all():
+            intro = seo.category_intro(category)
+            self.assertTrue(intro, category.name)
+            seen.add(intro)
+        self.assertEqual(len(seen), 15)
+
+    def test_pages_that_are_only_another_view_of_the_same_bags_are_not_listed(self):
+        for i in range(20):
+            make_bag(f"Filler {i:02d}")                         # so that a page 2 exists
+        for url, expected in (
+            ("/?q=tote", "http://testserver/"),
+            ("/?sort=price_asc", "http://testserver/"),
+            ("/?in_stock=1", "http://testserver/"),
+            ("/?page=2", "http://testserver/?page=2"),
+            ("/category/gym-bags/?sort=price_asc", "http://testserver/category/gym-bags/"),
+            ("/?category=Gym%20Bags", "http://testserver/category/gym-bags/"),
+        ):
+            with self.subTest(url=url):
+                html = self.client.get(url).content.decode()
+                self.assertEqual(meta(html, "robots"), "noindex, follow")
+                self.assertEqual(canonical(html), expected)
+
+    def test_search_results_say_what_was_searched(self):
+        response = self.client.get("/", {"q": "tote"})
+        self.assertEqual(unescape(page_title(response)), "Search results for \u201ctote\u201d | Bags & Beyond")
+
+    def test_later_pages_of_a_category_point_to_themselves(self):
+        gym = self.gym
+        for i in range(20):
+            make_bag(f"Gym Many {i:02d}", category=gym)
+        html = self.client.get("/category/gym-bags/?page=2").content.decode()
+        self.assertEqual(canonical(html), "http://testserver/category/gym-bags/?page=2")
+        self.assertEqual(meta(html, "robots"), "index, follow, max-image-preview:large")
+        self.assertIn("Gym Bags, Page 2 | Bags &amp; Beyond", html)
+        self.assertNotIn('class="shop-intro"', html)
+
+    def test_an_empty_category_is_not_listed(self):
+        html = self.client.get("/category/tote-bags/").content.decode()
+        self.assertEqual(meta(html, "robots"), "noindex, follow")
+
+    def test_a_bag_page(self):
+        with_picture(self.bag)
+        response = self.client.get(self.bag.get_absolute_url())
+        html = response.content.decode()
+        self.assertEqual(unescape(page_title(response)), "Zara Tote \u2013 Gym Bags | Bags & Beyond")
+        self.assertEqual(canonical(html), "http://testserver" + self.bag.get_absolute_url())
+        self.assertEqual(meta(html, "description"), "A roomy tote for the gym. Wipes clean, with a zip pocket.")
+        self.assertEqual(meta(html, "og:type", "property"), "product")
+        self.assertEqual(meta(html, "product:price:amount", "property"), "90000")
+        self.assertEqual(meta(html, "product:price:currency", "property"), "UGX")
+        self.assertEqual(meta(html, "product:availability", "property"), "in stock")
+        self.assertIn("f_jpg,q_auto,w_1200,h_630,c_pad", meta(html, "og:image", "property"))
+        self.assertContains(response, '<li aria-current="page">Zara Tote</li>')
+        self.assertContains(response, f'<li><a href="/category/gym-bags/">Gym Bags</a></li>')
+
+    def test_a_bag_is_described_for_search_engines_with_its_price_and_stock(self):
+        with_picture(self.bag)
+        blocks = {b["@type"]: b for b in ld_blocks(self.client.get(self.bag.get_absolute_url()).content.decode())}
+        product = blocks["Product"]
+        self.assertEqual((product["name"], product["sku"], product["category"]), ("Zara Tote", str(self.bag.id), "Gym Bags"))
+        self.assertEqual(
+            {k: product["offers"][k] for k in ("priceCurrency", "price", "availability")},
+            {"priceCurrency": "UGX", "price": "90000", "availability": "https://schema.org/InStock"},
+        )
+        self.assertTrue(product["image"][0].startswith("https://res.cloudinary.com/"))
+        crumbs = blocks["BreadcrumbList"]["itemListElement"]
+        self.assertEqual([c["name"] for c in crumbs], ["Home", "Gym Bags", "Zara Tote"])
+
+        Bag.objects.filter(pk=self.bag.pk).update(stock=0)
+        sold_out = ld_blocks(self.client.get(self.bag.get_absolute_url()).content.decode())[0]
+        self.assertEqual(sold_out["offers"]["availability"], "https://schema.org/OutOfStock")
+
+    def test_a_bag_without_a_description_still_gets_one(self):
+        bare = make_bag("Bare Bag", price=45000)
+        description = meta(self.client.get(bare.get_absolute_url()).content.decode(), "description")
+        self.assertIn("Bare Bag", description)
+        self.assertIn("UGX 45,000", description)
+        self.assertLessEqual(len(description), 160)
+
+    def test_long_descriptions_and_names_are_cut_for_search_results(self):
+        Bag.objects.filter(pk=self.bag.pk).update(name="N" * 80, description="word " * 100)
+        self.bag.refresh_from_db()
+        response = self.client.get(self.bag.get_absolute_url())
+        self.assertLessEqual(len(meta(response.content.decode(), "description")), 155)
+        self.assertLessEqual(len(unescape(page_title(response))), 70)
+
+    def test_what_a_bag_is_called_cannot_break_the_page(self):
+        nasty = make_bag("</script><script>alert(1)</script> & \"quotes\"")
+        html = self.client.get(nasty.get_absolute_url()).content.decode()
+        self.assertNotIn("</script><script>alert(1)", html)
+        product = [b for b in ld_blocks(html) if b["@type"] == "Product"][0]
+        self.assertEqual(product["name"], "</script><script>alert(1)</script> & \"quotes\"")
+
+    def test_pages_for_one_customer_are_kept_out_of_search_results(self):
+        self.assertEqual(meta(self.client.get("/cart/").content.decode(), "robots"), "noindex, nofollow")
+        self.assertEqual(meta(self.client.get("/login/").content.decode(), "robots"), "noindex, nofollow")
+        for url in ("/cart/", "/login/", "/checkout/", "/admin/login/", "/orders/", "/order/ABC/", "/healthz/", "/accounts/login/"):
+            self.assertEqual(self.client.get(url)["X-Robots-Tag"], "noindex, nofollow", url)
+        self.assertNotIn("X-Robots-Tag", self.client.get("/"))
+        self.assertNotIn("X-Robots-Tag", self.client.get("/privacy/"))
+
+    def test_the_codes_search_engines_ask_for(self):
+        self.assertNotIn("google-site-verification", self.client.get("/").content.decode())
+        with self.settings(GOOGLE_SITE_VERIFICATION="g-code-123", BING_SITE_VERIFICATION="b-code-456"):
+            html = self.client.get("/").content.decode()
+        self.assertEqual(meta(html, "google-site-verification"), "g-code-123")
+        self.assertEqual(meta(html, "msvalidate.01"), "b-code-456")
+
+
+class RobotsAndSitemapTests(TestCase):
+
+    def setUp(self):
+        self.gym = Category.objects.get(name="Gym Bags")
+        self.bag = make_bag("Zara Tote", category=self.gym)
+        with_picture(self.bag)
+        self.other = make_bag("Plain Bag", category=self.gym)
+
+    def test_robots_txt(self):
+        response = self.client.get("/robots.txt")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "text/plain; charset=utf-8")
+        text = response.content.decode()
+        self.assertIn("User-agent: *\nAllow: /", text)
+        for path in ("/admin/", "/cart/", "/checkout/", "/accounts/", "/login/", "/order/", "/orders/", "/v/"):
+            self.assertIn(f"Disallow: {path}\n", text)
+        self.assertIn("Sitemap: http://testserver/sitemap.xml", text)
+        with self.settings(SITE_URL="https://shop.example"):
+            self.assertIn("Sitemap: https://shop.example/sitemap.xml", self.client.get("/robots.txt").content.decode())
+
+    def test_the_sitemap_lists_every_page_worth_listing(self):
+        response = self.client.get("/sitemap.xml")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/xml; charset=utf-8")
+        self.assertIn("max-age=", response["Cache-Control"])
+
+        root = ElementTree.fromstring(response.content)
+        namespace = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9", "i": "http://www.google.com/schemas/sitemap-image/1.1"}
+        urls = [loc.text for loc in root.findall("s:url/s:loc", namespace)]
+
+        self.assertEqual(
+            urls,
+            [
+                "http://testserver/",
+                "http://testserver/category/gym-bags/",          # only categories that have bags
+                "http://testserver/privacy/",
+                "http://testserver" + self.bag.get_absolute_url(),
+                "http://testserver" + self.other.get_absolute_url(),
+            ],
+        )
+        self.assertEqual(len(urls), len(set(urls)))
+        pictures = root.findall("s:url/i:image/i:loc", namespace)
+        self.assertEqual(len(pictures), 1)
+        self.assertIn("f_jpg,q_auto,w_1200,c_limit/v1/bags/p1.png", pictures[0].text)
+
+    def test_the_sitemap_leaves_out_private_pages_and_uses_the_shops_address(self):
+        with self.settings(SITE_URL="https://shop.example"):
+            text = self.client.get("/sitemap.xml").content.decode()
+        self.assertIn("<loc>https://shop.example/</loc>", text)
+        for private in ("/cart/", "/checkout/", "/login/", "/admin/", "testserver"):
+            self.assertNotIn(private, text)
+
+    def test_names_with_symbols_are_safe_in_the_sitemap(self):
+        make_bag("Tom & Jerry <Bag>")
+        ElementTree.fromstring(self.client.get("/sitemap.xml").content)           # still valid XML
+
+    def test_a_big_shop_still_gets_a_sitemap(self):
+        make_many(300, prefix="Many")
+        root = ElementTree.fromstring(self.client.get("/sitemap.xml").content)
+        self.assertEqual(len(root), 306)
+
+    def test_the_picture_for_shared_links(self):
+        response = self.client.get("/social-card.png")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/png")
+        self.assertIn("max-age=", response["Cache-Control"])
+        card = Image.open(io.BytesIO(response.content))
+        self.assertEqual(card.size, (1200, 630))
+
+
+class OneAddressTests(TestCase):
+    """Anyone who arrives by another address is sent to the shop's own."""
+
+    def test_nothing_changes_while_no_address_is_chosen(self):
+        self.assertEqual(self.client.get("/", HTTP_HOST="testserver").status_code, 200)
+
+    @override_settings(ALLOWED_HOSTS=["*"], CANONICAL_HOST="shop.example")
+    def test_other_addresses_are_sent_to_the_shops_address_for_good(self):
+        response = self.client.get("/category/gym-bags/?sort=price_asc", HTTP_HOST="my-shop.onrender.com")
+        self.assertEqual(response.status_code, 301)
+        self.assertEqual(response["Location"], "https://shop.example/category/gym-bags/?sort=price_asc")
+        self.assertEqual(self.client.get("/", HTTP_HOST="www.shop.example").status_code, 301)
+
+    @override_settings(ALLOWED_HOSTS=["*"], CANONICAL_HOST="shop.example")
+    def test_the_shops_address_the_health_check_and_forms_are_left_alone(self):
+        self.assertEqual(self.client.get("/", HTTP_HOST="shop.example").status_code, 200)
+        self.assertEqual(self.client.get("/", HTTP_HOST="SHOP.example:443").status_code, 200)
+        self.assertEqual(self.client.get("/healthz/", HTTP_HOST="my-shop.onrender.com").status_code, 200)
+        self.assertEqual(self.client.post("/v/", HTTP_HOST="my-shop.onrender.com").status_code, 204)
+
+
+class CategoryPageFilterTests(TestCase):
+    """On a category's own page, "Clear filters" only appears once something else is filtered."""
+
+    def setUp(self):
+        self.gym = Category.objects.get(name="Gym Bags")
+        make_bag("Gym One", category=self.gym, price=20000)
+        make_bag("Gym Two", category=self.gym, price=90000)
+
+    def test_a_plain_category_page_has_nothing_to_clear(self):
+        self.assertNotContains(self.client.get("/category/gym-bags/"), "Clear filters")
+
+    def test_clearing_stays_inside_the_category(self):
+        response = self.client.get("/category/gym-bags/?sort=price_asc")
+        self.assertContains(response, '<a href="/category/gym-bags/" class="text-link">Clear filters</a>')
+        self.assertEqual(names(response), ["Gym One", "Gym Two"])
+
+    def test_the_old_style_address_and_search_still_clear_to_the_front_page(self):
+        self.assertContains(self.client.get("/?category=Gym%20Bags"), '<a href="/" class="text-link">Clear filters</a>')
+        self.assertContains(self.client.get("/?q=gym"), '<a href="/" class="text-link">Clear filters</a>')
+
+
+class MenuLinksTests(TestCase):
+    """The menu links straight to each category's own page, which is what search engines should find."""
+
+    def test_the_menu_links_to_the_category_pages_a_to_z(self):
+        html = self.client.get("/privacy/").content.decode()          # a page with the menu but no filter buttons
+        links = re.findall(r'href="(/category/[^"]+/)"', html)
+        self.assertEqual(
+            links,
+            ["/category/" + name.lower().replace(" ", "-") + "/" for name in CATEGORY_LIST],
+        )
+        self.assertNotIn("?category=", html)
+
+    def test_the_open_category_is_marked_in_the_menu(self):
+        html = self.client.get("/category/gym-bags/").content.decode()
+        self.assertRegex(html, r'href="/category/gym-bags/"\s+class="active"')
+        self.assertNotRegex(html, r'href="/category/tote-bags/"\s+class="active"')
+

@@ -1,9 +1,15 @@
 {% extends 'store/base.html' %}
 {% load store_extras %}
 
-{% block title %}Bags &amp; Beyond — {% if query %}Results for “{{ query }}”{% elif category_slug %}{{ category_slug|title }}{% elif is_curated %}Featured{% else %}All Bags{% endif %}{% if page_obj.number > 1 %} - Page {{ page_obj.number }}{% endif %}{% endblock %}
+{% block title %}{{ seo.title }}{% endblock %}
 
 {% block content %}
+
+{% if landing_category %}
+<div class="shop-crumbs">
+    {% include "store/_breadcrumbs.html" %}
+</div>
+{% endif %}
 
 <!-- SHOP BAR -->
 <div class="shop-bar" id="shop">
@@ -20,6 +26,10 @@
             <h1 class="shop-title">All Bags</h1>
         {% endif %}
 
+        {% if seo.intro %}
+            <p class="shop-intro">{{ seo.intro }}</p>
+        {% endif %}
+
         {% if is_curated %}
             {% if page_obj.has_next %}
                 <p class="shop-meta">
@@ -29,8 +39,8 @@
         {% else %}
             <p class="shop-meta">
                 <span>{{ result_count }} bag{{ result_count|pluralize }}</span>
-                {% if query or category_slug or sort or in_stock_only or min_price or max_price %}
-                    <a href="{% url 'index' %}" class="text-link">Clear filters</a>
+                {% if query or sort or in_stock_only or min_price or max_price or category_slug and not landing_category %}
+                    <a href="{% if landing_category %}{{ landing_category.get_absolute_url }}{% else %}{% url 'index' %}{% endif %}" class="text-link">Clear filters</a>
                 {% endif %}
             </p>
         {% endif %}

@@ -1,0 +1,201 @@
+{% extends "admin/base_site.html" %}
+{% load humanize %}
+
+{% block extrastyle %}{{ block.super }}
+<style>
+    .va { max-width: 1100px; }
+    .va h2 { margin: 28px 0 8px; font-size: 16px; }
+    .va .note { color: var(--body-quiet-color, #666); font-size: 12px; margin: 4px 0 10px; }
+    .va-range { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 18px; }
+    .va-range a { padding: 6px 14px; border: 1px solid var(--border-color, #ccc); border-radius: 999px; text-decoration: none; color: inherit; }
+    .va-range a.on { background: var(--primary, #417690); color: #fff; border-color: transparent; }
+    .va-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+    .va-card { border: 1px solid var(--border-color, #ddd); border-radius: 8px; padding: 12px 14px; background: var(--darkened-bg, #f8f8f8); }
+    .va-card b { display: block; font-size: 26px; line-height: 1.2; }
+    .va-card span { font-size: 12px; color: var(--body-quiet-color, #666); }
+    .va-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 0 28px; }
+    .va table { width: 100%; }
+    .va td, .va th { padding: 6px 8px; }
+    .va td.num, .va th.num { text-align: right; white-space: nowrap; }
+    .va .bar { display: block; height: 6px; margin-top: 4px; background: var(--primary, #417690); border-radius: 3px; min-width: 2px; }
+    .va-days, .va-hours { display: flex; align-items: flex-end; gap: 2px; height: 130px; border-bottom: 1px solid var(--border-color, #ccc); }
+    .va-days i, .va-hours i { flex: 1; background: var(--primary, #417690); min-height: 2px; border-radius: 2px 2px 0 0; }
+    .va-days i.zero, .va-hours i.zero { background: var(--border-color, #ddd); }
+    .va-axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--body-quiet-color, #666); margin-top: 4px; }
+    .va-hours-labels { display: flex; gap: 2px; font-size: 10px; color: var(--body-quiet-color, #666); }
+    .va-hours-labels span { flex: 1; text-align: center; }
+    .va .low { color: #ba2121; font-weight: 600; }
+    .va-empty { padding: 28px; border: 1px dashed var(--border-color, #ccc); border-radius: 8px; text-align: center; }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Home</a> &rsaquo;
+    <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a> &rsaquo;
+    Visitor analytics
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="va">
+
+    <div class="va-range">
+        {% for choice in stats.ranges %}
+            <a href="?days={{ choice.days }}"{% if choice.current %} class="on"{% endif %}>{{ choice.label }}</a>
+        {% endfor %}
+    </div>
+
+    {% if not stats.has_data %}
+
+        <p class="va-empty">
+            No visits recorded yet for this period. Visits appear here a few
+            seconds after someone opens a page of the shop. Your own visits
+            (while you are signed in as staff) are never counted.
+        </p>
+
+    {% endif %}
+
+    <div class="va-cards">
+        <div class="va-card"><b>{{ stats.visitors|intcomma }}</b><span>Visitors</span></div>
+        <div class="va-card"><b>{{ stats.page_views|intcomma }}</b><span>Pages viewed</span></div>
+        <div class="va-card"><b>{{ stats.bag_views|intcomma }}</b><span>Bag pages opened</span></div>
+        <div class="va-card"><b>{{ stats.cart_adds|intcomma }}</b><span>Added to cart</span></div>
+        <div class="va-card"><b>{{ stats.orders|intcomma }}</b><span>Orders placed</span></div>
+        <div class="va-card"><b>UGX {{ stats.revenue|floatformat:0|intcomma }}</b><span>Order value (cancelled left out)</span></div>
+        <div class="va-card"><b>{{ stats.conversion }}%</b><span>Visitors who ordered</span></div>
+    </div>
+    <p class="note">
+        A visitor is counted once a day: someone who comes back tomorrow counts
+        again. Nothing here identifies a person (no name, no cookie, no IP address).
+    </p>
+
+    <h2>Visitors each day</h2>
+    <div class="va-days">
+        {% for row in stats.daily %}
+            <i class="{% if not row.visitors %}zero{% endif %}" style="height: {{ row.bar }}%" title="{{ row.label }}: {{ row.visitors }} visitors, {{ row.views }} pages viewed"></i>
+        {% endfor %}
+    </div>
+    <div class="va-axis">
+        <span>{{ stats.daily.0.label }}</span>
+        <span>{% with stats.daily|last as latest %}{{ latest.label }}{% endwith %}</span>
+    </div>
+
+    <h2>Bags people open the most</h2>
+    <p class="note">A bag's page opened = a click on that bag. "Added" = put in the cart. "Bought" = units in orders.</p>
+    {% if stats.top_bags %}
+    <table>
+        <thead><tr><th>Bag</th><th class="num">Opened</th><th class="num">By visitors</th><th class="num">Added</th><th class="num">Added / opened</th><th class="num">Bought</th></tr></thead>
+        <tbody>
+        {% for bag in stats.top_bags %}
+            <tr>
+                <td>{{ bag.name }}{% if bag.category %} <span class="note">{{ bag.category }}</span>{% endif %}<span class="bar" style="width: {{ bag.bar }}%"></span></td>
+                <td class="num">{{ bag.views }}</td>
+                <td class="num">{{ bag.people }}</td>
+                <td class="num">{{ bag.adds }}</td>
+                <td class="num">{{ bag.rate }}%</td>
+                <td class="num">{{ bag.bought }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}<p class="note">No bag pages opened yet.</p>{% endif %}
+
+    <div class="va-grid">
+
+        <div>
+            <h2>From visit to order</h2>
+            <table>
+                {% for step in stats.funnel %}
+                <tr><td>{{ step.label }}<span class="bar" style="width: {{ step.percent }}%"></span></td><td class="num">{{ step.people }}</td><td class="num">{{ step.percent }}%</td></tr>
+                {% endfor %}
+            </table>
+        </div>
+
+        <div>
+            <h2>Where visitors come from</h2>
+            <p class="note">"Direct" = typed in, or a link from an app that does not say where it was (WhatsApp often). Add <code>?utm_source=whatsapp</code> to links you share to see them here.</p>
+            <table>
+                {% for row in stats.sources %}
+                <tr><td>{{ row.source }}<span class="bar" style="width: {{ row.bar }}%"></span></td><td class="num">{{ row.people }}</td><td class="num">{{ row.percent }}%</td></tr>
+                {% empty %}<tr><td class="note">Nothing yet.</td></tr>{% endfor %}
+            </table>
+        </div>
+
+        <div>
+            <h2>What people search for</h2>
+            <p class="note">Red = searches that found no bag: bags your customers want that you do not show.</p>
+            <table>
+                <thead><tr><th>Search</th><th class="num">Times</th><th class="num">Bags found</th></tr></thead>
+                {% for row in stats.searches %}
+                <tr><td>{{ row.term }}<span class="bar" style="width: {{ row.bar }}%"></span></td><td class="num">{{ row.times }}</td><td class="num{% if row.nothing %} low{% endif %}">{% if row.nothing and not row.found %}none{% else %}{{ row.found|default_if_none:"-" }}{% endif %}</td></tr>
+                {% empty %}<tr><td class="note">No searches yet.</td></tr>{% endfor %}
+            </table>
+        </div>
+
+        <div>
+            <h2>Categories people open</h2>
+            <table>
+                {% for row in stats.categories %}
+                <tr><td>{{ row.category }}<span class="bar" style="width: {{ row.bar }}%"></span></td><td class="num">{{ row.views }}</td></tr>
+                {% empty %}<tr><td class="note">Nothing yet.</td></tr>{% endfor %}
+            </table>
+        </div>
+
+        <div>
+            <h2>Most visited pages</h2>
+            <table>
+                {% for row in stats.top_pages %}
+                <tr><td>{{ row.path }}<span class="bar" style="width: {{ row.bar }}%"></span></td><td class="num">{{ row.views }}</td></tr>
+                {% empty %}<tr><td class="note">Nothing yet.</td></tr>{% endfor %}
+            </table>
+        </div>
+
+        <div>
+            <h2>Phones, tablets and computers</h2>
+            <table>
+                {% for row in stats.devices %}
+                <tr><td>{{ row.device|capfirst }}<span class="bar" style="width: {{ row.bar }}%"></span></td><td class="num">{{ row.people }}</td><td class="num">{{ row.percent }}%</td></tr>
+                {% empty %}<tr><td class="note">Nothing yet.</td></tr>{% endfor %}
+            </table>
+            <table>
+                {% for row in stats.systems %}
+                <tr><td>{{ row.os }}<span class="bar" style="width: {{ row.bar }}%"></span></td><td class="num">{{ row.people }}</td><td class="num">{{ row.percent }}%</td></tr>
+                {% endfor %}
+            </table>
+        </div>
+
+        <div>
+            <h2>Browsers</h2>
+            <p class="note">"TikTok app" and "Instagram app" = people who opened your link inside that app.</p>
+            <table>
+                {% for row in stats.browsers %}
+                <tr><td>{{ row.browser }}<span class="bar" style="width: {{ row.bar }}%"></span></td><td class="num">{{ row.people }}</td><td class="num">{{ row.percent }}%</td></tr>
+                {% empty %}<tr><td class="note">Nothing yet.</td></tr>{% endfor %}
+            </table>
+        </div>
+
+        <div>
+            <h2>Busiest days of the week</h2>
+            <p class="note">Visitors in this period, by weekday.</p>
+            <table>
+                {% for row in stats.weekdays %}
+                <tr><td>{{ row.label }}<span class="bar" style="width: {{ row.bar }}%"></span></td><td class="num">{{ row.visitors }}</td></tr>
+                {% endfor %}
+            </table>
+        </div>
+
+    </div>
+
+    <h2>Busiest hours of the day (Kampala time)</h2>
+    <div class="va-hours">
+        {% for row in stats.hours %}
+            <i class="{% if not row.views %}zero{% endif %}" style="height: {{ row.bar }}%" title="{{ row.label }}:00 &mdash; {{ row.views }} pages viewed"></i>
+        {% endfor %}
+    </div>
+    <div class="va-hours-labels">
+        {% for row in stats.hours %}<span>{{ row.label }}</span>{% endfor %}
+    </div>
+
+</div>
+{% endblock %}

@@ -1,6 +1,8 @@
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.core.validators import MinValueValidator
+from django.urls import reverse
+from django.utils.text import slugify
 
 # How many bags the homepage shows. The view and the admin both use this.
 HOMEPAGE_BAG_LIMIT = 12
@@ -18,6 +20,14 @@ class Category(models.Model):
         # Always A to Z: the menu, the filter buttons and the admin.
         ordering = ["name"]
         verbose_name_plural = "categories"
+
+    @property
+    def slug(self):
+        # "Gym Bags" -> "gym-bags": the category's address is /category/gym-bags/
+        return slugify(self.name) or "category"
+
+    def get_absolute_url(self):
+        return reverse("category_page", args=[self.slug])
 
     def __str__(self):
         return self.name
@@ -72,6 +82,14 @@ class Bag(models.Model):
     created_at = models.DateTimeField(
         auto_now_add=True
     )
+
+    @property
+    def slug(self):
+        # "Zara Tote" -> "zara-tote": the bag's address is /bag/12/zara-tote/
+        return slugify(self.name) or "bag"
+
+    def get_absolute_url(self):
+        return reverse("product_detail_slug", args=[self.id, self.slug])
 
     def __str__(self):
         return self.name
@@ -263,3 +281,58 @@ class OrderItem(models.Model):
 
     def __str__(self):
         return f"{self.product_name} x {self.quantity}"
+
+class VisitEvent(models.Model):
+    """
+    One anonymous thing a visitor did: looked at a page, or added a bag to
+    the cart. There is no name, no cookie and no IP address here: `visitor`
+    is a scrambled code that changes every day, so the same person on two
+    different days looks like two visitors.
+    """
+
+    PAGE = "page"
+    CART = "cart"
+
+    KIND_CHOICES = [
+        (PAGE, "Page view"),
+        (CART, "Added to cart"),
+    ]
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    day = models.DateField(db_index=True)          # Kampala time
+
+    hour = models.PositiveSmallIntegerField()      # 0 to 23, Kampala time
+
+    visitor = models.CharField(max_length=16)
+
+    kind = models.CharField(max_length=8, choices=KIND_CHOICES)
+
+    path = models.CharField(max_length=200, blank=True)
+
+    bag_id = models.PositiveIntegerField(null=True, blank=True)
+
+    category = models.CharField(max_length=100, blank=True)
+
+    term = models.CharField(max_length=80, blank=True)
+
+    results = models.PositiveIntegerField(null=True, blank=True)
+
+    source = models.CharField(max_length=60, blank=True)
+
+    device = models.CharField(max_length=10, blank=True)
+
+    os = models.CharField(max_length=12, blank=True)
+
+    browser = models.CharField(max_length=16, blank=True)
+
+    class Meta:
+        verbose_name = "visitor event"
+        verbose_name_plural = "visitor analytics"
+        indexes = [
+            models.Index(fields=["kind", "day"]),
+            models.Index(fields=["bag_id", "kind"]),
+        ]
+
+    def __str__(self):
+        return f"{self.day} {self.kind} {self.path}"

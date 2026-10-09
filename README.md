@@ -116,6 +116,52 @@ Things to know about option 1:
 
 ---
 
+## Visitor analytics
+
+Open **Admin > Store > Visitor analytics** (`/admin/store/visitevent/`) and pick Today, 7 days, 30 days, 90 days or All time. It shows:
+
+- visitors, pages viewed, bag pages opened, bags added to the cart, orders and their value;
+- the bags people open the most (a bag's page opened is a click on that bag), with how many times each was added to the cart and bought;
+- the path from visit to order, where visitors come from, what they search for (red = searches that found no bag: bags your customers want that you do not show), the categories they open, phones versus computers, browsers, and the busiest days and hours (Kampala time).
+
+How it works: a very small script at the end of every page tells the shop about the page view once the page has loaded. No cookie is set and no name or IP address is stored. A visitor is a scrambled code that changes every day, so someone who comes back tomorrow counts as a new visitor. Search engines, link previews, staff (you, while signed in) and browsers that send "Do Not Track" are not counted, and the privacy policy says so.
+
+"Direct" means typed in, or a link from an app that does not say where it came from (WhatsApp often). Add `?utm_source=whatsapp` (or `tiktok`, `instagram`, ...) to the links you share and they appear under their own name.
+
+Events older than 400 days are deleted now and then. To clear them yourself: `python manage.py prune_visits --days 400`.
+
+---
+
+## Search engines (SEO)
+
+What the shop does by itself:
+
+- Every page has its own title and description. The front page, each category (`/category/gym-bags/`) and each bag (`/bag/12/zara-tote/`) has one proper address; the short `/bag/12/` leads to it for good.
+- Links shared on WhatsApp, Facebook or TikTok show a title, a description and a picture.
+- Google is told about the shop, each bag's price and stock, and the path to each page (structured data).
+- `/robots.txt` and `/sitemap.xml` exist. Pages for one customer (cart, checkout, accounts) and search or sorted lists are kept out of search results.
+
+What you do, once:
+
+1. In Render set `SITE_URL=https://bagsnbeyond.com` (your own domain) and `CANONICAL_HOST=bagsnbeyond.com`. The second sends anyone who arrives by the onrender.com address or `www.` to the proper address for good, so Google sees one site and not two copies.
+2. Add the site in Google Search Console (search.google.com/search-console) with "URL prefix". Choose the "HTML tag" way to verify and put only the `content` code in Render as `GOOGLE_SITE_VERIFICATION`. Once it is verified, open Sitemaps and submit `sitemap.xml`. (`BING_SITE_VERIFICATION` does the same for Bing Webmaster Tools.)
+3. In **Admin > Categories** write a Description for each category in your own words: it becomes the text under the category's heading and its description in Google. Write a Description for every bag too, and upload clear photos.
+4. Share the category and bag addresses (not search results), and make a Google Business Profile and social profiles with the same name, phone number and link.
+
+Google decides when and where pages appear. For a new site that takes days to weeks, and nobody can promise a position.
+
+---
+
+## Speed
+
+- Pictures are asked from Cloudinary at the size the screen needs, in the best format the browser can show (WebP or AVIF), instead of the full upload. Phones on mobile data load a fraction of the bytes. Each size and format Cloudinary makes counts toward its monthly free allowance, so keep an eye on your Cloudinary dashboard.
+- Only the first bags on a page load at once; the rest load as you scroll.
+- The font and the logo no longer hold the page back (the logo is a small WebP).
+- Pages are compressed, the category list is kept for a minute instead of being read from the database on every page, and a visitor who has put nothing in the cart gets no session and no cookie.
+- Keep Render and your Neon database in the same region (check both dashboards): every page asks the database a few questions, and a long distance adds to each one.
+
+---
+
 ## Deploying to Render (with Neon, Brevo and Google sign-in)
 
 **Files the deploy uses:** `build.sh` (installs, collects static files, migrates), `.python-version` (the Python version) and `.gitattributes` (keeps `build.sh` in Unix line endings, which Render needs). The repository must not contain `.env`, `venv/`, `db.sqlite3`, `db_backup.sqlite3`, `data_dump.json`, `media/`, `staticfiles/` or `__pycache__/` (`.gitignore` already skips them). Check with `git ls-files`; if one is listed, run `git rm -r --cached NAME` and commit.
@@ -141,6 +187,9 @@ Things to know about option 1:
 | `DEFAULT_FROM_EMAIL` | `Bags & Beyond <orders@bagsnbeyond.com>`, a sender verified in Brevo |
 | `ORDER_NOTIFICATION_EMAIL` | where the "NEW BAG STORE ORDER" alerts go |
 | `DB_CONN_MAX_AGE` | optional, seconds to keep a database connection (default 60) |
+| `SITE_URL` | `https://bagsnbeyond.com`: the shop's one proper address, used in the page tags, shared links and the sitemap |
+| `CANONICAL_HOST` | `bagsnbeyond.com`: sends the onrender.com address and `www.` to it for good (leave out until the domain works) |
+| `GOOGLE_SITE_VERIFICATION`, `BING_SITE_VERIFICATION` | the codes Google Search Console and Bing give you, optional |
 
 Render's free plan blocks the SMTP ports (25, 465 and 587), so email over SMTP only works on a paid plan. If you are on a paid plan and prefer SMTP, leave `BREVO_API_KEY` out and set `EMAIL_HOST=smtp-relay.brevo.com`, `EMAIL_PORT=587`, `EMAIL_USE_TLS=True`, `EMAIL_HOST_USER` and `EMAIL_HOST_PASSWORD` instead.
 

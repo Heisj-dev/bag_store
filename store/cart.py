@@ -7,12 +7,26 @@ class Cart:
 
         self.session = request.session
 
-        cart = self.session.get("cart")
+        # A visitor who has put nothing in the cart gets no session and no
+        # cookie: the cart is only stored once something is added to it.
+        self.cart = self.session.get("cart") or {}
 
-        if cart is None:
-            cart = self.session["cart"] = {}
+    def _save(self):
+        self.session["cart"] = self.cart
+        self.session.modified = True
 
-        self.cart = cart
+    def count(self):
+        """How many bags are in the cart, straight from the session (no database)."""
+
+        total = 0
+
+        for quantity in self.cart.values():
+            try:
+                total += int(quantity)
+            except (TypeError, ValueError):
+                pass
+
+        return total
 
 
     def add(self, bag, quantity=1):
@@ -31,7 +45,7 @@ class Cart:
             return False
 
         self.cart[bag_id] = new_quantity
-        self.session.modified = True
+        self._save()
 
         return True
 
@@ -46,7 +60,7 @@ class Cart:
 
             if current_quantity < bag.stock:
                 self.cart[bag_id] += 1
-                self.session.modified = True
+                self._save()
                 return True
 
         return False
@@ -61,7 +75,7 @@ class Cart:
 
                 self.cart[bag_id] -= 1
 
-                self.session.modified = True
+                self._save()
 
 
     def remove(self, bag):
@@ -72,7 +86,7 @@ class Cart:
 
             del self.cart[bag_id]
 
-            self.session.modified = True
+            self._save()
 
 
     def __iter__(self):
@@ -95,7 +109,7 @@ class Cart:
 
                 del self.cart[bag_id]
 
-                self.session.modified = True
+                self._save()
 
                 continue
 
@@ -103,7 +117,7 @@ class Cart:
 
                 self.cart[bag_id] = quantity
 
-                self.session.modified = True
+                self._save()
 
             yield {
                 "bag": bag,

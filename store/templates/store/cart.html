@@ -20,10 +20,19 @@
 
                 <article class="receipt-item">
 
-                    <a href="{% url 'product_detail' item.bag.id %}" class="receipt-thumb">
+                    <a href="{{ item.bag.get_absolute_url }}" class="receipt-thumb">
                         {% with first_image=item.bag.images.first %}
                             {% if first_image %}
-                                <img src="{{ first_image.image.url }}" alt="{{ item.bag.name }}">
+                                {% with url=first_image.image.url %}
+                                <img
+                                    src="{{ url|cld:216 }}"
+                                    {% cld_srcset url "144,216" %}
+                                    sizes="72px"
+                                    alt="{{ item.bag.name }}"
+                                    width="72"
+                                    height="90"
+                                >
+                                {% endwith %}
                             {% else %}
                                 <div class="image-placeholder">Image unavailable</div>
                             {% endif %}
