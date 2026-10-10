@@ -60,6 +60,8 @@
     <link rel="icon" href="{% url 'favicon' %}">
     <link rel="apple-touch-icon" href="{% url 'apple_touch_icon' %}">
 
+    <!-- Resolve the saved/device theme before CSS paints the page. -->
+    <script src="{% static 'store/js/theme.js' %}"></script>
     <link rel="stylesheet" href="{% static 'store/css/style.css' %}">
 
     <style>
@@ -184,8 +186,14 @@
             </svg>
         </button>
 
+<button type="button" class="theme-toggle header-theme-toggle" hidden data-theme-controls data-theme-toggle aria-label="Switch to dark mode">
+            <svg class="theme-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M20.8 13A9 9 0 0 1 11 3.2 9 9 0 1 0 20.8 13Z"/></svg>
+            <svg class="theme-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg>
+            <span class="visually-hidden" data-theme-label>Dark mode</span>
+        </button>
+
         <a href="{% url 'index' %}" class="brand">
-            <picture>
+            <picture class="brand-art" style="--brand-mask: url('{% static "store/images/bag-store-logo.png" %}')">
                 <source
                     type="image/webp"
                     srcset="{% url 'logo_image' 320 %} 320w, {% url 'logo_image' 480 %} 480w, {% url 'logo_image' 640 %} 640w"
@@ -353,6 +361,11 @@
     >
 
         <div class="drawer-header">
+<button type="button" class="theme-toggle drawer-theme-toggle" hidden data-theme-controls data-theme-toggle aria-label="Switch to dark mode">
+            <svg class="theme-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M20.8 13A9 9 0 0 1 11 3.2 9 9 0 1 0 20.8 13Z"/></svg>
+            <svg class="theme-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg>
+            <span data-theme-label>Dark mode</span>
+        </button>
 
             <button
                 type="button"
@@ -395,6 +408,17 @@
 
         </div>
 
+
+        <fieldset class="drawer-appearance" hidden data-theme-controls>
+            <legend>Appearance</legend>
+            <p class="appearance-caption">Make yourself at home.</p>
+            <div class="appearance-options">
+                <label><input type="radio" name="appearance" value="system" data-theme-choice checked><span>Device</span></label>
+                <label><input type="radio" name="appearance" value="light" data-theme-choice><span>Light</span></label>
+                <label><input type="radio" name="appearance" value="dark" data-theme-choice><span>Dark</span></label>
+            </div>
+            <p class="appearance-status" data-theme-status aria-live="polite"></p>
+        </fieldset>
 
         <div class="drawer-footer">
 

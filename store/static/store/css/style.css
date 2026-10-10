@@ -4762,3 +4762,107 @@ a.pagination-step:hover {
         letter-spacing: 0.06em;
     }
 }
+
+
+/* APPEARANCE — device default, with a remembered manual choice. */
+:root { color-scheme: light; }
+html[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #000000;
+    --surface: #16181c;
+    --frame: #16181c;
+    --field: #0f1113;
+    --ink: #e7e9ea;
+    --ink-2: #a0a7ad;
+    --ink-body: #c4c9cd;
+    --ink-3: #929ba3;
+    --placeholder: #929ba3;
+    --line: #2f3336;
+    --line-strong: #626b73;
+    --line-on-surface: #3a4045;
+    --success: #85d4a2;
+    --success-bg: #10251a;
+    --success-line: #29553a;
+    --warning: #f0c675;
+    --warning-bg: #2a2110;
+    --warning-line: #655025;
+    --danger: #ffaaa3;
+    --danger-bg: #301716;
+    --danger-line: #68322e;
+    --focus: #e7e9ea;
+}
+/* Theme controls share the existing header and drawer; no extra page row. */
+.theme-toggle {
+    display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    width: 44px; min-height: 44px; padding: 0; border: 1px solid transparent;
+    border-radius: 50%; background: transparent; color: var(--ink); font: inherit;
+    font-size: 12px; cursor: pointer;
+    transition: background-color 160ms ease, border-color 160ms ease;
+}
+.theme-toggle:hover { background: var(--surface); border-color: var(--line); }
+.theme-toggle svg { width: 20px; height: 20px; flex-shrink: 0; }
+.theme-toggle[hidden], .drawer-appearance[hidden] { display: none; }
+.theme-sun { display: none; }
+html[data-theme="dark"] .theme-sun { display: block; }
+html[data-theme="dark"] .theme-moon { display: none; }
+.header-theme-toggle { position: absolute; left: calc(var(--gutter) + 44px); top: 50%; transform: translateY(-50%); }
+.drawer-header { justify-content: space-between; }
+.drawer-theme-toggle { width: auto; border-radius: 4px; padding: 0 10px; margin-left: -10px; }
+@media (max-width: 899px) { .header-theme-toggle { display: none; } }
+.drawer-appearance { flex-shrink: 0; min-width: 0; margin: 0; padding: 20px 24px; border: 0; border-top: 1px solid var(--line); }
+.drawer-appearance legend { float: left; width: 100%; padding: 0; margin-bottom: 4px; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.appearance-caption { clear: both; margin: 0 0 14px; color: var(--ink-2); font-size: 12px; }
+.appearance-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.appearance-options label { position: relative; margin: 0; cursor: pointer; }
+.appearance-options input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.appearance-options span { display: flex; min-height: 44px; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 5px; color: var(--ink-2); font-size: 12px; }
+.appearance-options input:checked + span { background: var(--bg); color: var(--ink); border-color: var(--line-strong); font-weight: 700; }
+.appearance-options input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+.appearance-status { margin: 10px 0 0; color: var(--ink-2); font-size: 11px; }
+/* The original alpha mask whitens lettering only (left 72%). Pink pixels are untouched. */
+.brand-art { position: relative; display: block; }
+html[data-theme="dark"] .brand-art::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: #e7e9ea; clip-path: inset(0 28% 0 0);
+    -webkit-mask: var(--brand-mask) center / 100% 100% no-repeat;
+    mask: var(--brand-mask) center / 100% 100% no-repeat;
+}
+html[data-theme="dark"] :is(.product-image img, .gallery-slide img, .receipt-thumb img) { mix-blend-mode: normal; }
+html[data-theme="dark"] .gallery-arrow { background: #16181ce6; }
+html[data-theme="dark"] :is(.button, .pdp-add-to-cart, .receipt-checkout, .checkout-submit, .auth-button, .auth-card button[type="submit"], .order-action-primary, .account-action-primary, .modal-action-btn, .price-filter-form button):hover {
+    background: #cbd0d3; border-color: #cbd0d3;
+}
+html[data-theme="dark"] :is(.button, .pdp-add-to-cart, .receipt-checkout, .checkout-submit, .auth-button, .auth-card button[type="submit"], .order-action-primary, .account-action-primary, .modal-action-btn):active {
+    background: #aeb6bc; border-color: #aeb6bc;
+}
+html[data-theme="dark"] .site-footer { background: #0b0d0e; color: var(--ink); border-top: 1px solid var(--line); }
+html[data-theme="dark"] .site-footer :is(dt, a, button) { color: var(--ink); }
+html[data-theme="dark"] .site-footer :is(a, button):focus-visible { outline-color: var(--focus); }
+html[data-theme="dark"] :is(.footer-main, .footer-bottom) { border-color: var(--line); }
+html[data-theme="dark"] .auth-error { color: var(--danger); background: var(--danger-bg); border-color: var(--danger-line); }
+html[data-theme="dark"] :is(.form-field input, .google-login-button) { border-color: var(--line-strong); }
+html[data-theme="dark"] .form-field input::placeholder { opacity: 1; }
+html[data-theme="dark"] :is(.form-field input:hover, .form-field input:focus, .google-login-button:hover) { border-color: var(--ink); background: var(--surface); }
+html[data-theme="dark"] .auth-register { border-color: var(--line); }
+html[data-theme="dark"] .auth-divider::before,
+html[data-theme="dark"] .auth-divider::after { background: var(--line); }
+html[data-theme="dark"] .address-suggest-list { background: var(--surface); border-color: var(--line-strong); }
+html[data-theme="dark"] .address-suggest-list li { border-color: var(--line); }
+html[data-theme="dark"] .address-suggest-list li:hover,
+html[data-theme="dark"] .address-suggest-list li[aria-selected="true"] { background: #292e33; }
+html[data-theme="dark"] .auth-button:hover { color: #000; }
+html[data-theme="dark"] .auth-divider span { background: var(--line); }
+html[data-theme="dark"] .drawer-overlay { background: rgba(91, 112, 131, .4); }
+html[data-theme="dark"] .modal-overlay { background: rgba(91, 112, 131, .4); }
+@media (prefers-reduced-motion: reduce) { .theme-toggle { transition: none; } }
+html[data-theme="dark"] .modal-action-btn small { color: #42484d; }
+
+/* Keep the complete product photo visible below the desktop header. */
+@media (min-width: 900px) and (min-height: 550px) {
+    .pdp-gallery { position: sticky; top: calc(var(--header-h) + 20px); }
+    .gallery-slide {
+        aspect-ratio: auto;
+        height: min(700px, calc(100vh - var(--header-h) - 110px));
+        height: min(700px, calc(100dvh - var(--header-h) - 110px));
+    }
+}
