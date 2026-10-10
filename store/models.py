@@ -197,9 +197,63 @@ class Order(models.Model):
     )
     
 
+    # The FINAL total: subtotal + delivery fee. Orders placed before delivery
+    # fees existed keep exactly the total they always had.
     total = models.DecimalField(
         max_digits=10,
         decimal_places=2
+    )
+
+    # Delivery. Every field below is optional or has a default, so orders
+    # placed before delivery fees existed stay valid and unchanged.
+    DELIVERY_STATUS_CHOICES = [
+        ("NOT_CALCULATED", "Not calculated (earlier order)"),
+        ("CALCULATED", "Calculated"),
+        ("QUOTE_REQUIRED", "Too far for a set fee: quote needed"),
+        ("UNVERIFIED", "Address not verified: confirm fee"),
+        ("AGREED", "Fee agreed by phone"),
+    ]
+    # The products only. Empty on orders placed before delivery fees existed:
+    # for those, `total` already is the products total.
+    subtotal = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+
+    # What the customer pays for delivery. 0 means free OR "not agreed yet":
+    # check delivery_status to tell them apart.
+    # db_default (not just default) so the database itself fills these in.
+    # That keeps the live site working if this migration runs on the shared
+    # database a few minutes before the new code is deployed.
+    delivery_fee = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+        db_default=0,
+    )
+
+    # Driving distance from the pickup point, in metres.
+    delivery_distance_m = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+    )
+
+    delivery_status = models.CharField(
+        max_length=20,
+        choices=DELIVERY_STATUS_CHOICES,
+        default="NOT_CALCULATED",
+        db_default="NOT_CALCULATED",
+    )
+
+    # For staff: what the map service matched the address to, or why the
+    # fee could not be worked out.
+    delivery_note = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        db_default="",
     )
 
     status = models.CharField(
@@ -239,7 +293,24 @@ class Order(models.Model):
                     "A cancelled order cannot be reopened: its bags are "
                     "already back in stock. Create a new order instead."
                 )
+    @property
+    def products_total(self):
+        """
+        The products only. Orders placed before delivery fees existed have
+        no subtotal saved, and their total is the products total.
+        """
+        return self.subtotal if self.subtotal is not None else self.total
 
+    @property
+    def delivery_distance_km(self):
+        if self.delivery_distance_m is None:
+            return None
+        return round(self.delivery_distance_m / 1000, 1)
+
+    @property
+    def delivery_fee_pending(self):
+        """True while the delivery fee still has to be agreed by phone."""
+        return self.delivery_status in ("QUOTE_REQUIRED", "UNVERIFIED")
     def __str__(self):
         return self.order_number
 

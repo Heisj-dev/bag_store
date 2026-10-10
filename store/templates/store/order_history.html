@@ -42,7 +42,7 @@
 
                         <div>
                             <span>Total</span>
-                            <strong>UGX {{ order.total|ugx_format }}</strong>
+                            <strong>UGX {{ order.total|ugx_format }}{% if order.delivery_fee_pending %} + delivery{% endif %}</strong>
                         </div>
 
                         <div>

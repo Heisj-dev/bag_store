@@ -61,4 +61,10 @@ urlpatterns = [
         {"filename": "apple-touch-icon.png"},
         name="apple_touch_icon",
     ),
+    path("checkout/", views.checkout, name="checkout"),
+path(
+    "checkout/address-suggestions/",
+    views.address_suggestions,
+    name="address_suggestions",
+),
 ]

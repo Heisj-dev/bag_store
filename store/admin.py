@@ -331,26 +331,83 @@ class OrderAdmin(admin.ModelAdmin):
         "city",
         "user",
         "email",
+        "delivery_fee",
         "total",
+        "delivery_status",
         "payment_method",
         "payment_status",
         "status",
         "created_at",
-        
     )
-
+        
     list_editable = [
         "status",
         "payment_status",
     ]
 
     actions = [
-        "mark_as_confirmed",
         "mark_as_processing",
         "mark_as_shipped",
         "mark_as_delivered",
         "mark_as_cancelled",
+        "delivery_fee_agreed",
     ]
+
+    def get_readonly_fields(self, request, obj=None):
+        """
+        The money fields are locked, with ONE exception: while an order's
+        delivery fee is still to be agreed by phone, staff may type it in.
+        """
+
+        readonly = list(super().get_readonly_fields(request, obj))
+
+        if obj is not None and obj.delivery_fee_pending:
+            readonly.remove("delivery_fee")
+
+        return readonly
+
+    def save_model(self, request, obj, form, change):
+        """
+        When staff enter the agreed delivery fee, the final total follows it
+        (subtotal + fee) and the order stops being "fee to be agreed".
+        """
+
+        if (
+            change
+            and obj.delivery_fee_pending
+            and "delivery_fee" in form.changed_data
+        ):
+            self._record_agreed_fee(request, obj)
+
+        super().save_model(request, obj, form, change)
+
+    @staticmethod
+    def _record_agreed_fee(request, order):
+        order.total = order.products_total + order.delivery_fee
+        order.delivery_status = "AGREED"
+        order.delivery_note = (
+            f"Fee agreed by phone, recorded by {request.user.get_username()}. "
+            f"{order.delivery_note}"
+        )[:255]
+
+    @admin.action(description="Delivery fee agreed (keep the fee shown)")
+    def delivery_fee_agreed(self, request, queryset):
+        """For a quote order where the agreed fee is the one already on it,
+        for example 0 because the customer is close enough to be free."""
+
+        done = 0
+
+        for order in queryset.filter(
+            delivery_status__in=["QUOTE_REQUIRED", "UNVERIFIED"]
+        ):
+            self._record_agreed_fee(request, order)
+            order.save()
+            done += 1
+
+        self.message_user(
+            request,
+            f"{done} order(s) marked as delivery fee agreed.",
+        )
 
     def open_orders(self, request, queryset):
         """The orders an action may move on. A cancelled order is final."""
@@ -429,9 +486,11 @@ class OrderAdmin(admin.ModelAdmin):
 
     list_filter = (
         "status",
+        "delivery_status",
         "payment_method",
         "payment_status",
         "created_at",
+        "updated_at",
     )
 
     search_fields = (
@@ -449,7 +508,12 @@ class OrderAdmin(admin.ModelAdmin):
         "order_number",
         "user",
         "email",
+        "subtotal",
+        "delivery_fee",
         "total",
+        "delivery_distance_m",
+        "delivery_status",
+        "delivery_note",
         "payment_method",
         "stock_restored",
         "created_at",

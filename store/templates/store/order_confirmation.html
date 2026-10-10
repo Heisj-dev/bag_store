@@ -93,10 +93,48 @@
 
         </div>
 
+        {% if order.subtotal is not None %}
+            <!-- Orders placed before delivery fees existed have no breakdown. -->
+            <div class="order-detail-item">
+                <div class="order-detail-item-info">
+                    <strong>Subtotal</strong>
+                </div>
+                <strong class="order-detail-item-total">
+                    UGX {{ order.subtotal|floatformat:0|intcomma }}
+                </strong>
+            </div>
+
+            <div class="order-detail-item">
+                <div class="order-detail-item-info">
+                    <strong>Delivery</strong>
+                    {% if order.delivery_distance_km is not None %}
+                        <p>{{ order.delivery_distance_km }} km by road</p>
+                    {% endif %}
+                </div>
+                <strong class="order-detail-item-total">
+                    {% if order.delivery_fee_pending %}
+                        To be confirmed
+                    {% elif order.delivery_fee %}
+                        UGX {{ order.delivery_fee|floatformat:0|intcomma }}
+                    {% else %}
+                        Free
+                    {% endif %}
+                </strong>
+            </div>
+        {% endif %}
+
         <div class="order-detail-total">
             <span>Total</span>
-            <strong>UGX {{ order.total|floatformat:0|intcomma }}</strong>
+            <strong>
+                UGX {{ order.total|floatformat:0|intcomma }}{% if order.delivery_fee_pending %} + delivery{% endif %}
+            </strong>
         </div>
+
+        {% if order.delivery_fee_pending %}
+            <p class="order-hero-text">
+                We will call you to agree your delivery fee before your order is dispatched.
+            </p>
+        {% endif %}
 
     </div>
 

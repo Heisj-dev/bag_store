@@ -31,14 +31,16 @@ SOCIAL_LINKS = [
 HOME_TITLE = "Bags & Beyond | Handbags, Laptop Bags & Luggage in Kampala"
 
 HOME_DESCRIPTION = (
-    "Shop handbags, laptop bags, luggage, suitcases, gym and duffle bags online "
-    "in Kampala, Uganda. Pay on delivery, delivered in 12\u201348 hours."
+"Shop handbags, backpacks, laptop bags and luggage online at Bags & Beyond. "
+"Find everyday styles with convenient delivery across Kampala, Uganda."
 )
 
+
 HOME_INTRO = (
-    "Handbags, laptop bags, luggage and more. "
-    "Pay on delivery, delivered in Kampala in 12\u201348 hours."
+"Discover bags that match your style and everyday needs. "
+"Shop handbags, backpacks, laptop bags and luggage at Bags & Beyond."
 )
+
 
 # One plain sentence per category: shown on the category's page, and used in
 # its search-result description. Anything written in the admin (the category's

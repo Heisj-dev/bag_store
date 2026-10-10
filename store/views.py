@@ -3,6 +3,8 @@ import io
 import json
 import logging
 import uuid
+import hashlib
+from django.core.cache import cache
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import urlparse
@@ -36,7 +38,18 @@ from .templatetags.store_extras import cld, ugx_format
 from . import analytics, seo
 from .cart import Cart
 from .categories import all_categories
-from .emails import send_order_received_email
+from .delivery import (
+    SUGGEST_MIN_CHARS,
+    calculate_delivery,
+    calculate_delivery_for_place,
+    clear_quote,
+    customer_message,
+    load_quote,
+    save_quote,
+    suggest_places,
+    verify_place_token,
+)
+from .emails import order_totals_text, send_order_received_email
 
 logger = logging.getLogger(__name__)
 
@@ -723,6 +736,80 @@ class CustomerPasswordResetView(auth_views.PasswordResetView):
             "site_name": "Bags & Beyond",
         }
         return super().form_valid(form)
+# Address suggestions while typing: every NEW lookup uses Geoapify credits, so
+# one customer may trigger this many per window, and a repeated search is
+# answered from the cache instead.
+SUGGESTION_REQUESTS_PER_WINDOW = 90
+SUGGESTION_WINDOW_SECONDS = 600
+SUGGESTION_CACHE_SECONDS = 600
+
+
+@login_required
+@require_safe
+@never_cache
+def address_suggestions(request):
+    """
+    Places matching what the customer has typed so far, as JSON:
+    {"suggestions": [{"label": ..., "city": ..., "token": ...}]}.
+    The browser calls this; only the server ever talks to Geoapify.
+    """
+
+    query = " ".join(request.GET.get("q", "").split())[:100]
+
+    if len(query.replace(" ", "")) < SUGGEST_MIN_CHARS:
+        return JsonResponse({"suggestions": []})
+
+    cache_key = "address-suggest:" + hashlib.sha1(
+        query.casefold().encode("utf-8")
+    ).hexdigest()
+
+    cached = cache.get(cache_key)
+
+    if cached is not None:
+        return JsonResponse({"suggestions": cached})
+
+    counter_key = f"address-suggest-count:{request.user.pk}"
+    cache.add(counter_key, 0, SUGGESTION_WINDOW_SECONDS)
+
+    try:
+        count = cache.incr(counter_key)
+    except ValueError:
+        cache.set(counter_key, 1, SUGGESTION_WINDOW_SECONDS)
+        count = 1
+
+    if count > SUGGESTION_REQUESTS_PER_WINDOW:
+        return JsonResponse({"suggestions": []}, status=429)
+
+    suggestions = suggest_places(query)
+
+    # Only a real answer is remembered: a failed lookup must not stick.
+    if suggestions:
+        cache.set(cache_key, suggestions, SUGGESTION_CACHE_SECONDS)
+
+    return JsonResponse({"suggestions": suggestions})
+
+
+def _checkout_context(cart, quote=None):
+    """
+    What the checkout page shows. `quote` is the delivery result the customer
+    has just been shown (None before they have asked for it). Only a
+    calculated quote adds a fee to the total: a quote that needs a phone call
+    adds nothing, and the page says so.
+    """
+
+    subtotal = cart.get_total_price()
+
+    fee = quote.fee if quote is not None and quote.fee_is_final else Decimal("0")
+
+    return {
+        "cart": cart,
+        "total": subtotal,
+        "subtotal": subtotal,
+        "quote": quote,
+        "delivery_fee": fee,
+        "final_total": subtotal + fee,
+        "delivery_message": customer_message(quote) if quote is not None else "",
+    }
 
 
 @login_required
@@ -732,6 +819,7 @@ def account(request):
         request,
         "store/account.html"
     )
+
 
 @login_required
 def checkout(request):
@@ -773,10 +861,43 @@ def checkout(request):
             return render(
                 request,
                 "store/checkout.html",
-                {
-                    "cart": cart,
-                    "total": cart.get_total_price(),
-                }
+                _checkout_context(cart)
+            )
+
+        # ---- DELIVERY ----------------------------------------------------
+        # The fee is never read from the form: it is worked out here, on the
+        # server, from the address. Two presses of one button:
+        #   1st press -> work out the fee and SHOW it (no order yet);
+        #   2nd press -> place the order with exactly the fee that was shown.
+        # Any change to the address or the basket means a fresh quote, so
+        # nobody can place an order at a price they have not seen.
+        subtotal_shown = cart.get_total_price()
+
+        # If the customer picked their address from the suggestions, the form
+        # carries a signed token for that exact map position. It is trusted
+        # only if the signature is genuine and the address text still starts
+        # with the place they picked; otherwise the typed text is looked up.
+        place = verify_place_token(request.POST.get("place_token", ""), address)
+        place_key = place.key if place else ""
+
+        quote = load_quote(request.session, address, city, subtotal_shown, place_key)
+
+        if quote is None:
+            # The map lookup happens BEFORE the transaction below, so no
+            # database rows stay locked while we wait for it.
+            if place is not None:
+                quote = calculate_delivery_for_place(place)
+            else:
+                quote = calculate_delivery(address, city)
+
+            save_quote(
+                request.session, address, city, subtotal_shown, quote, place_key
+            )
+
+            return render(
+                request,
+                "store/checkout.html",
+                _checkout_context(cart, quote)
             )
 
         with transaction.atomic():
@@ -793,12 +914,12 @@ def checkout(request):
                 payment_status="PENDING",
                 total=0,
             )
-            
-            total = 0
-            
+
+            subtotal = 0
+
             for bag_id, quantity in cart.cart.items():
                 bag = Bag.objects.select_for_update().get(id=bag_id)
-                
+
                 if quantity > bag.stock:
                     transaction.set_rollback(True)
                     messages.error(
@@ -806,7 +927,7 @@ def checkout(request):
                         f"NOT ENOUGH STOCK FOR {bag.name.upper()}."
                     )
                     return redirect("cart_detail")
-                
+
                 OrderItem.objects.create(
                     order=order,
                     bag=bag,
@@ -814,43 +935,76 @@ def checkout(request):
                     price=bag.price,
                     quantity=quantity,
                 )
-                
-                total += bag.price * quantity
+
+                subtotal += bag.price * quantity
                 bag.stock -= quantity
                 bag.save(update_fields=["stock"])
-                
-            order.total = total
-            order.save(update_fields=["total"])
+
+            # Only a calculated quote carries a fee. For "too far" and
+            # "could not verify" the fee stays 0 and staff agree it by phone.
+            delivery_fee = quote.fee if quote.fee_is_final else Decimal("0")
+
+            order.subtotal = subtotal
+            order.delivery_fee = delivery_fee
+            order.total = subtotal + delivery_fee
+            order.delivery_distance_m = quote.distance_m
+            order.delivery_status = quote.status
+            order.delivery_note = quote.note
+            order.save(
+                update_fields=[
+                    "subtotal",
+                    "delivery_fee",
+                    "total",
+                    "delivery_distance_m",
+                    "delivery_status",
+                    "delivery_note",
+                ]
+            )
 
         request.session["cart"] = {}
         request.session.modified = True
+        clear_quote(request.session)
 
         send_mail(
-            subject=f"NEW BAG STORE ORDER — #{order.order_number}",
+            subject=(
+                f"NEW BAG STORE ORDER — #{order.order_number}"
+                + (
+                    " — CALL CUSTOMER FOR DELIVERY FEE"
+                    if order.delivery_fee_pending
+                    else ""
+                )
+            ),
             message=(
                 f"NEW ORDER RECEIVED\n\n"
                 f"Order number: {order.order_number}\n"
-                f"Date: {order.created_at.strftime('%d %B %Y, %H:%M')}\n\n"
+                f"Date: {order.created_at.strftime('%Y-%m-%d %H:%M')}\n\n"
                 f"CUSTOMER\n"
                 f"Name: {order.full_name}\n"
-                f"Email: {order.email}\n"
-                f"Phone: {order.phone}\n\n"
+                f"Phone: {order.phone}\n"
+                f"Email: {order.email}\n\n"
                 f"DELIVERY\n"
                 f"Address: {order.address}\n"
                 f"City / Area: {order.city}\n"
-                f"Notes: {order.notes or 'None'}\n\n"
+                f"Notes: {order.notes or 'None'}\n"
+                f"Delivery check: {order.get_delivery_status_display()}"
+                + (
+                    f" ({order.delivery_distance_km} km by road)"
+                    if order.delivery_distance_km is not None
+                    else ""
+                )
+                + f"\nDelivery note: {order.delivery_note or 'None'}\n\n"
                 f"ITEMS\n"
                 + "\n".join(
                     f"- {item.product_name} × {item.quantity} — "
-                    f"UGX {item.get_total_price():,.0f}"
+                    f"UGX {item.price * item.quantity:,.0f}"
                     for item in order.items.all()
                 )
                 + "\n\n"
-                f"TOTAL: UGX {order.total:,.0f}\n"
+                f"{order_totals_text(order)}"
                 f"Payment method: {order.payment_method}\n"
                 f"Payment status: {order.payment_status}\n"
             ),
-            from_email=None,
+            from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[settings.ORDER_NOTIFICATION_EMAIL],
             fail_silently=True,
         )
@@ -865,10 +1019,7 @@ def checkout(request):
     return render(
         request,
         "store/checkout.html",
-        {
-            "cart": cart,
-            "total": cart.get_total_price(),
-        }
+        _checkout_context(cart)
     )
 
 @login_required

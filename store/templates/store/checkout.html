@@ -42,7 +42,7 @@
                         type="email"
                         id="email"
                         name="email"
-                        value="{{ request.user.email }}"
+                        value="{{ request.POST.email|default:request.user.email }}"
                         autocomplete="email"
                         required
                     >
@@ -69,9 +69,25 @@
                         id="address"
                         name="address"
                         rows="4"
-                        autocomplete="street-address"
+                        autocomplete="off"
+                        data-suggest-url="{% url 'address_suggestions' %}"
                         required
                     >{{ request.POST.address|default:'' }}</textarea>
+
+                    <!-- Filled in when the customer picks a suggestion: a signed
+                         token for that exact map position (see _address_suggest.html).
+                         The server checks the signature; the fee is never read from here. -->
+                    <input
+                        type="hidden"
+                        id="place_token"
+                        name="place_token"
+                        value="{{ request.POST.place_token|default:'' }}"
+                    >
+
+                    <p class="address-hint">
+                        Start typing, then choose your address from the list.
+                        You can add your house number, building or floor after it.
+                    </p>
                 </div>
 
                 <div class="form-group">
@@ -133,9 +149,48 @@
 
                 </div>
 
-                <!-- PLACE ORDER -->
+                <!-- DELIVERY FEE (shown after the first press) -->
+                <style>
+                    .delivery-quote {
+                        margin: 24px 0 0;
+                        padding: 16px 18px;
+                        border: 1px solid currentColor;
+                    }
+                    .delivery-quote p { margin: 0 0 8px; }
+                    .delivery-quote p:last-child { margin-bottom: 0; }
+                    .checkout-line {
+                        display: flex;
+                        justify-content: space-between;
+                        gap: 16px;
+                        padding: 10px 0;
+                    }
+                </style>
+
+                {% if quote %}
+                    <div class="delivery-quote" role="status">
+                        <p>{{ delivery_message }}</p>
+                        {% if quote.fee_is_final %}
+                            <p>
+                                <strong>
+                                    Delivery:
+                                    {% if delivery_fee %}UGX {{ delivery_fee|ugx_format }}{% else %}Free{% endif %}
+                                    &nbsp;·&nbsp;
+                                    Total to pay: UGX {{ final_total|ugx_format }}
+                                </strong>
+                            </p>
+                        {% endif %}
+                        <p>Check everything above, then press Place order.</p>
+                    </div>
+                {% else %}
+                    <p class="checkout-note">
+                        Press the button to see your delivery fee and final total.
+                        Your order is only placed when you press Place order.
+                    </p>
+                {% endif %}
+
+                <!-- CHECK DELIVERY, THEN PLACE ORDER -->
                 <button type="submit" class="checkout-submit">
-                    Place order
+                    {% if quote %}Place order{% else %}Check delivery fee{% endif %}
                 </button>
 
                 <dl class="service-info">
@@ -143,7 +198,7 @@
                         <dt>Delivery</dt>
                         <dd>
                             12–48 hours
-                            <span>Free in Kampala Central, subsidized for the wider Kampala metropolitan area.</span>
+                            <span>Free for nearby addresses. Otherwise the fee depends on the road distance from our Kampala pickup point, and you see it before you place your order.</span>
                         </dd>
                     </div>
                     <div>
@@ -184,11 +239,35 @@
 
             </div>
 
-            <!-- TOTAL -->
+            <!-- SUBTOTAL, DELIVERY, TOTAL -->
+            <div class="checkout-line">
+                <span>Subtotal</span>
+                <span>UGX {{ subtotal|ugx_format }}</span>
+            </div>
+
+            <div class="checkout-line">
+                <span>Delivery</span>
+                <span>
+                    {% if not quote %}
+                        Calculated next
+                    {% elif quote.fee_is_final %}
+                        {% if delivery_fee %}UGX {{ delivery_fee|ugx_format }}{% else %}Free{% endif %}
+                    {% else %}
+                        To be confirmed by phone
+                    {% endif %}
+                </span>
+            </div>
+
             <div class="cart-total">
                 <span>Total</span>
-                <strong>UGX {{ cart.get_total_price|ugx_format }}</strong>
+                <strong>UGX {{ final_total|ugx_format }}</strong>
             </div>
+
+            {% if quote and not quote.fee_is_final %}
+                <p class="checkout-note">
+                    Delivery fee not included yet. We will call you to agree it.
+                </p>
+            {% endif %}
 
             <p class="checkout-note">
                 Your order will be processed after you place it.
@@ -200,4 +279,8 @@
 
 </section>
 
+{% endblock %}
+
+{% block extra_js %}
+    {% include "store/_address_suggest.html" %}
 {% endblock %}

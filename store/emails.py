@@ -1,6 +1,31 @@
 from django.core.mail import send_mail
 
 
+def order_totals_text(order):
+    """
+    The money lines for an email. Orders placed before delivery fees existed
+    keep the single TOTAL line they always had.
+    """
+
+    if order.subtotal is None:
+        return f"TOTAL: UGX {order.total:,.0f}\n"
+
+    lines = [f"Subtotal: UGX {order.subtotal:,.0f}"]
+
+    if order.delivery_fee_pending:
+        lines.append("Delivery: to be confirmed by phone (not included yet)")
+        lines.append(f"TOTAL: UGX {order.total:,.0f} + delivery fee")
+        lines.append(
+            "We will call you to agree the delivery fee before your order is dispatched."
+        )
+    else:
+        fee = f"UGX {order.delivery_fee:,.0f}" if order.delivery_fee else "FREE"
+        lines.append(f"Delivery: {fee}")
+        lines.append(f"TOTAL: UGX {order.total:,.0f}")
+
+    return "\n".join(lines) + "\n"
+
+
 def _format_items(order):
     return "\n".join(
         f"- {item.product_name} x{item.quantity} — UGX {item.get_total_price():,.0f}"
@@ -19,7 +44,7 @@ def send_order_received_email(order):
             f"Date: {order.created_at.strftime('%d %B %Y, %H:%M')}\n\n"
             f"ITEMS\n"
             f"{_format_items(order)}\n\n"
-            f"TOTAL: UGX {order.total:,.0f}\n"
+            f"{order_totals_text(order)}"
             f"Payment: Pay on Delivery (cash or Mobile Money to the rider)\n\n"
             f"DELIVERING TO\n"
             f"{order.address}\n"
@@ -47,7 +72,7 @@ def send_order_confirmed_email(order):
             f"ORDER #{order.order_number}\n\n"
             f"ITEMS\n"
             f"{_format_items(order)}\n\n"
-            f"TOTAL: UGX {order.total:,.0f}\n"
+            f"{order_totals_text(order)}"
             f"Payment: Pay on Delivery (cash or Mobile Money to the rider)\n\n"
             f"DELIVERING TO\n"
             f"{order.address}\n"
@@ -73,7 +98,7 @@ def send_order_shipped_email(order):
             f"ORDER #{order.order_number}\n\n"
             f"ITEMS\n"
             f"{_format_items(order)}\n\n"
-            f"TOTAL: UGX {order.total:,.0f}\n\n"
+            f"{order_totals_text(order)}\n"
             f"DELIVERING TO\n"
             f"{order.address}\n"
             f"{order.city}\n\n"
@@ -96,7 +121,7 @@ def send_order_delivered_email(order):
             f"ORDER #{order.order_number}\n\n"
             f"ITEMS\n"
             f"{_format_items(order)}\n\n"
-            f"TOTAL: UGX {order.total:,.0f}\n\n"
+            f"{order_totals_text(order)}\n"
             f"If anything isn't right, just reply to this email or message us on "
             f"WhatsApp and we'll sort it out.\n\n"
             f"Thanks for shopping with Bags & Beyond.\n\n"
@@ -117,7 +142,7 @@ def send_order_cancelled_email(order):
             f"ORDER #{order.order_number}\n\n"
             f"ITEMS\n"
             f"{_format_items(order)}\n\n"
-            f"TOTAL: UGX {order.total:,.0f}\n\n"
+            f"{order_totals_text(order)}\n"
             f"If this doesn't look right, or you'd like to reorder, reply to this "
             f"email or message us on WhatsApp.\n\n"
             f"— Bags & Beyond"

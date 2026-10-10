@@ -286,3 +286,13 @@ LOGGING = {
     "handlers": {"console": {"class": "logging.StreamHandler"}},
     "root": {"handlers": ["console"], "level": "WARNING"},
 }
+
+# Delivery fees: road distance from our pickup point, worked out by Geoapify.
+# The key is a SECRET: set GEOAPIFY_API_KEY in your .env file locally and in
+# Render's Environment tab. Never write it in code, templates or Git. With no
+# key, checkout still works: delivery is simply confirmed by phone.
+GEOAPIFY_API_KEY = config("GEOAPIFY_API_KEY", default="")
+
+# Giant Shopping Centre, Kampala CBD.
+DELIVERY_PICKUP_LAT = config("DELIVERY_PICKUP_LAT", default=0.3153404, cast=float)
+DELIVERY_PICKUP_LNG = config("DELIVERY_PICKUP_LNG", default=32.5749709, cast=float)

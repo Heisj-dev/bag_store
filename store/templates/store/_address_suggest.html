@@ -1,0 +1,282 @@
+<!-- ADDRESS SUGGESTIONS WHILE TYPING (included by checkout.html).
+     The browser asks OUR server for suggestions (never Geoapify directly),
+     so the API key stays secret. Picking one stores a signed token in the
+     hidden place_token field; the server only trusts that token if its
+     signature is genuine. If anything here fails, the customer simply types
+     the address as before. -->
+<style>
+    .address-suggest-list {
+        position: absolute;
+        left: 0;
+        right: 0;
+        z-index: 30;
+        margin: 4px 0 0;
+        padding: 0;
+        list-style: none;
+        background: #fff;
+        color: var(--ink, #111);
+        border: 1px solid var(--ink, #111);
+        max-height: 15.5rem;
+        overflow-y: auto;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+    }
+
+    .address-suggest-list[hidden] {
+        display: none;
+    }
+
+    .address-suggest-list li {
+        padding: 12px 14px;
+        line-height: 1.35;
+        cursor: pointer;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    }
+
+    .address-suggest-list li:last-child {
+        border-bottom: 0;
+    }
+
+    .address-suggest-list li[aria-selected="true"],
+    .address-suggest-list li:hover {
+        background: rgba(0, 0, 0, 0.07);
+    }
+
+    .address-hint {
+        margin: 6px 0 0;
+        font-size: 0.85em;
+        opacity: 0.75;
+    }
+</style>
+
+<script>
+(function () {
+    "use strict";
+
+    var field = document.getElementById("address");
+    var tokenInput = document.getElementById("place_token");
+    var cityInput = document.getElementById("city");
+
+    if (!field || !tokenInput || !window.fetch) {
+        return;
+    }
+
+    var url = field.getAttribute("data-suggest-url");
+
+    if (!url) {
+        return;
+    }
+
+    var MIN_CHARS = 3;
+    var WAIT_MS = 300;
+
+    var timer = null;
+    var pending = null;     // the request in flight (so it can be cancelled)
+    var latest = 0;         // number of the newest request: older answers are ignored
+    var items = [];
+    var active = -1;
+    var chosen = "";        // tidied text of the place the customer picked
+
+    var list = document.createElement("ul");
+    list.id = "address-suggestions";
+    list.className = "address-suggest-list";
+    list.setAttribute("role", "listbox");
+    list.setAttribute("aria-label", "Address suggestions");
+    list.hidden = true;
+
+    field.parentNode.style.position = "relative";
+    field.parentNode.insertBefore(list, field.nextSibling);
+
+    field.setAttribute("role", "combobox");
+    field.setAttribute("aria-autocomplete", "list");
+    field.setAttribute("aria-controls", list.id);
+    field.setAttribute("aria-expanded", "false");
+    field.setAttribute("autocomplete", "off");
+
+    function tidy(text) {
+        return (text || "").replace(/\s+/g, " ").trim().toLowerCase();
+    }
+
+    function stopRequest() {
+        latest += 1;
+
+        if (pending) {
+            pending.abort();
+            pending = null;
+        }
+    }
+
+    function close() {
+        list.hidden = true;
+
+        while (list.firstChild) {
+            list.removeChild(list.firstChild);
+        }
+
+        items = [];
+        active = -1;
+
+        field.setAttribute("aria-expanded", "false");
+        field.removeAttribute("aria-activedescendant");
+    }
+
+    function highlight(index) {
+        var options = list.children;
+
+        active = index;
+
+        for (var i = 0; i < options.length; i++) {
+            options[i].setAttribute("aria-selected", i === index ? "true" : "false");
+        }
+
+        if (index >= 0 && options[index]) {
+            field.setAttribute("aria-activedescendant", options[index].id);
+
+            if (options[index].scrollIntoView) {
+                options[index].scrollIntoView({ block: "nearest" });
+            }
+        } else {
+            field.removeAttribute("aria-activedescendant");
+        }
+    }
+
+    function choose(index) {
+        var picked = items[index];
+
+        if (!picked) {
+            return;
+        }
+
+        field.value = picked.label;
+        tokenInput.value = picked.token;
+        chosen = tidy(picked.label);
+
+        if (cityInput && !cityInput.value.trim() && picked.city) {
+            cityInput.value = picked.city;
+        }
+
+        close();
+    }
+
+    function show(found) {
+        close();
+
+        if (!found.length) {
+            return;
+        }
+
+        items = found;
+
+        found.forEach(function (suggestion, i) {
+            var option = document.createElement("li");
+
+            option.id = "address-option-" + i;
+            option.setAttribute("role", "option");
+            option.setAttribute("aria-selected", "false");
+            option.textContent = suggestion.label;   // text, never HTML
+
+            // keep the cursor in the box while tapping an option
+            option.addEventListener("mousedown", function (event) {
+                event.preventDefault();
+            });
+
+            option.addEventListener("click", function () {
+                choose(i);
+            });
+
+            list.appendChild(option);
+        });
+
+        list.hidden = false;
+        field.setAttribute("aria-expanded", "true");
+    }
+
+    function search() {
+        var query = tidy(field.value).slice(0, 100);
+        var controller = window.AbortController ? new AbortController() : null;
+        var mine;
+
+        stopRequest();
+
+        mine = latest;
+        pending = controller;
+
+        fetch(url + "?q=" + encodeURIComponent(query), {
+            credentials: "same-origin",
+            headers: { "Accept": "application/json" },
+            signal: controller ? controller.signal : undefined
+        })
+            .then(function (response) {
+                return response.ok ? response.json() : { suggestions: [] };
+            })
+            .then(function (data) {
+                var found;
+
+                if (mine !== latest || document.activeElement !== field) {
+                    return;     // an older answer, or the customer has moved on
+                }
+
+                found = ((data && data.suggestions) || []).filter(function (s) {
+                    return s && typeof s.label === "string" && typeof s.token === "string";
+                });
+
+                show(found);
+            })
+            .catch(function () {
+                if (mine === latest) {
+                    close();
+                }
+            });
+    }
+
+    field.addEventListener("input", function () {
+        var now = tidy(field.value);
+
+        // Keep the picked place while the customer only ADDS to it (a house
+        // number, building or floor). Changing the place itself drops it.
+        if (tokenInput.value && chosen && now.indexOf(chosen) !== 0) {
+            tokenInput.value = "";
+            chosen = "";
+        }
+
+        clearTimeout(timer);
+
+        if (tokenInput.value || now.replace(/\s/g, "").length < MIN_CHARS) {
+            stopRequest();
+            close();
+            return;
+        }
+
+        timer = setTimeout(search, WAIT_MS);
+    });
+
+    field.addEventListener("keydown", function (event) {
+        if (list.hidden || !items.length) {
+            return;
+        }
+
+        if (event.key === "ArrowDown") {
+            event.preventDefault();
+            highlight((active + 1) % items.length);
+        } else if (event.key === "ArrowUp") {
+            event.preventDefault();
+            highlight(active <= 0 ? items.length - 1 : active - 1);
+        } else if (event.key === "Enter" && active >= 0) {
+            event.preventDefault();     // choose it, do not add a new line
+            choose(active);
+        } else if (event.key === "Escape") {
+            event.preventDefault();
+            close();
+        }
+    });
+
+    field.addEventListener("blur", function () {
+        setTimeout(close, 150);
+    });
+
+    // The page is shown again after "Check delivery fee" with the place
+    // already picked: keep it while the customer adds details.
+    if (tokenInput.value) {
+        chosen = tidy(field.value);
+    }
+})();
+</script>
